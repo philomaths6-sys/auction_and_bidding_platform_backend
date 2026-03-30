@@ -89,8 +89,8 @@ pip install -r requirements.txt
 Create a `.env` file in the root directory:
 
 ```env
-DATABASE_URL=mysql+aiomysql://admin:Admin%4021814@localhost:3306/auction_db
-DATABASE_URL_SYNC=mysql+pymysql://admin:Admin%4021814@localhost:3306/auction_db
+DATABASE_URL=mysql+aiomysql://username:pass@localhost:3306/auction_db
+DATABASE_URL_SYNC=mysql+pymysql://username:pass@localhost:3306/auction_db
 
 REDIS_URL=redis://localhost:6379
 
