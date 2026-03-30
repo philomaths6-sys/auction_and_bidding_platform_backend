@@ -1,0 +1,37 @@
+# --- Python / Environment ---
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.python-version
+
+# --- Database & Migrations ---
+# Do NOT ignore the versions/ folder (you need those to migrate in prod)
+# But ignore the SQLite file if you ever use it for local testing
+*.sqlite3
+*.db
+
+# --- IDEs / Editors ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# --- Packaging / Distribution ---
+dist/
+build/
+*.egg-info/
+requirements.txt.bak
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Auction Specific ---
+# If you create a local folder for uploaded images
+app/static/uploads/*
+!app/static/uploads/.gitkeep
