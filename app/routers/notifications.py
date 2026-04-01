@@ -55,3 +55,23 @@ async def mark_all_read(
         notif.is_read = True
     await db.commit()
     return {'status': 'all read'}
+
+
+# ─── SECTION: Unread Count (NEW) ─────────────────────────────────────────────
+
+@router.get('/unread-count')
+async def unread_count(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Returns the number of unread notifications for the current user."""
+    from sqlalchemy import func
+    result = await db.execute(
+        select(func.count()).where(
+            Notification.user_id == current_user.id,
+            Notification.is_read == False
+        )
+    )
+    return {'unread': result.scalar()}
+
+# ─── END SECTION: Unread Count ───────────────────────────────────────────────

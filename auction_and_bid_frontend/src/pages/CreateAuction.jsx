@@ -35,7 +35,8 @@ export default function CreateAuction() {
     setFormData(prev => ({ ...prev, end_time: d.toISOString().slice(0, 16) }));
   }, [user, navigate]);
 
-  const selectedParent = categoryRoots.find((c) => c.id === Number(parentCategoryId));
+  const safeRoots = Array.isArray(categoryRoots) ? categoryRoots : [];
+  const selectedParent = safeRoots.find((c) => c.id === Number(parentCategoryId));
   const availableSubcategories = selectedParent?.children?.length ? selectedParent.children : (selectedParent ? [selectedParent] : []);
 
   const handleNext = () => setStep(s => Math.min(s + 1, 4));
@@ -197,7 +198,7 @@ export default function CreateAuction() {
                   setFormData({...formData, category_id: ''});
                 }} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-3 font-bold focus:outline-none focus:border-amber-500 transition-colors">
                   <option value="">Select parent category...</option>
-                  {categoryRoots.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {safeRoots.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
 

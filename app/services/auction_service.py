@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.database import AsyncSessionLocal
@@ -13,7 +13,7 @@ async def close_ended_auctions():
         result = await db.execute(
             select(Auction).where(
                 Auction.auction_status == 'active',
-                Auction.end_time <= datetime.utcnow()
+                Auction.end_time <= datetime.now(timezone.utc)
             )
         )
         auctions = result.scalars().all()

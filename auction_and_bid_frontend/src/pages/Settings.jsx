@@ -5,7 +5,7 @@ import { User, Shield, CheckCircle2, Bell, Upload, AlertTriangle, Key } from 'lu
 import axiosClient from '../services/api/axiosClient';
 
 export default function Settings() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { addToast } = useToast();
   
   const [activeTab, setActiveTab] = useState('profile');
@@ -48,6 +48,17 @@ export default function Settings() {
         delete payload.profile_image;
       }
       await axiosClient.put('/users/me/profile', payload);
+      const updated = await refreshUser();
+      if (updated?.profile) {
+        setProfile({
+          full_name: updated.profile.full_name || '',
+          bio: updated.profile.bio || '',
+          city: updated.profile.city || '',
+          country: updated.profile.country || '',
+          address: updated.profile.address || '',
+          profile_image: updated.profile.profile_image || '',
+        });
+      }
       addToast('Profile updated successfully', 'success');
     } catch (e) {
       addToast(e.response?.data?.detail || 'Failed to update profile', 'error');
@@ -61,8 +72,16 @@ export default function Settings() {
     if (passwords.new !== passwords.confirm) return addToast("Passwords don't match", "error");
     if (passwords.new.length < 8) return addToast("Password must be at least 8 characters", "error");
     
-    addToast('Password endpoint is not available in backend yet.', 'info');
-    setPasswords({ current: '', new: '', confirm: '' });
+    try {
+      await axiosClient.put('/users/me/password', {
+        current_password: passwords.current,
+        new_password: passwords.new,
+      });
+      addToast('Password updated successfully', 'success');
+      setPasswords({ current: '', new: '', confirm: '' });
+    } catch (e) {
+      addToast(e.response?.data?.detail || 'Failed to update password', 'error');
+    }
   };
 
   const tabs = [

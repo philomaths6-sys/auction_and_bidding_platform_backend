@@ -298,7 +298,12 @@ export default function AdminDashboard() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         {a.auction_status !== 'active' && (
-                          <button onClick={() => handleDeleteAuction(a.id)} className="text-xs font-black uppercase tracking-widest text-red-600 hover:text-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded transition-colors flex items-center gap-1 ml-auto"><Trash2 className="w-3 h-3" /> Remove</button>
+                          <button
+                            onClick={() => handleDeleteAuction(a.id)}
+                            className="text-xs font-black uppercase tracking-widest text-red-600 hover:text-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded transition-colors flex items-center gap-1 ml-auto"
+                          >
+                            <Trash2 className="w-3 h-3" /> Remove
+                          </button>
                         )}
                       </td>
                     </tr>

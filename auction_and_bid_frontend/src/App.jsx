@@ -20,6 +20,7 @@ import AccountSuspended from './pages/AccountSuspended';
 import Watchlist from './pages/Watchlist';
 import Settings from './pages/Settings';
 import PaymentFlow from './pages/PaymentFlow';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const ProtectedRoute = ({ children }) => {
   const { user } = useAuth();
@@ -44,24 +45,26 @@ function App() {
           <AuthProvider>
             <CategoryProvider>
               <BrowserRouter>
-                <div className="min-h-screen flex flex-col bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-200">
+                <div className="min-h-screen flex flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-100 font-sans transition-colors duration-200">
                   <Navbar />
                   <main className="flex-grow">
-                    <Routes>
-                      <Route path="/" element={<Home />} />
-                      <Route path="/login" element={<Login />} />
-                      <Route path="/register" element={<Register />} />
-                      <Route path="/auctions/:id" element={<AuctionDetail />} />
-                      <Route path="/seller/:id" element={<PublicProfile />} />
-                      <Route path="/suspended" element={<AccountSuspended />} />
-                      
-                      <Route path="/create" element={<ProtectedRoute><CreateAuction /></ProtectedRoute>} />
-                      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-                      <Route path="/payment/:id" element={<ProtectedRoute><PaymentFlow /></ProtectedRoute>} />
-                      <Route path="/watchlist" element={<ProtectedRoute><Watchlist /></ProtectedRoute>} />
-                      <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-                      <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
-                    </Routes>
+                    <ErrorBoundary>
+                      <Routes>
+                        <Route path="/" element={<Home />} />
+                        <Route path="/login" element={<Login />} />
+                        <Route path="/register" element={<Register />} />
+                        <Route path="/auctions/:id" element={<AuctionDetail />} />
+                        <Route path="/seller/:id" element={<PublicProfile />} />
+                        <Route path="/suspended" element={<AccountSuspended />} />
+                        
+                        <Route path="/create" element={<ProtectedRoute><CreateAuction /></ProtectedRoute>} />
+                        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                        <Route path="/payment/:id" element={<ProtectedRoute><PaymentFlow /></ProtectedRoute>} />
+                        <Route path="/watchlist" element={<ProtectedRoute><Watchlist /></ProtectedRoute>} />
+                        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+                        <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+                      </Routes>
+                    </ErrorBoundary>
                   </main>
                 </div>
               </BrowserRouter>

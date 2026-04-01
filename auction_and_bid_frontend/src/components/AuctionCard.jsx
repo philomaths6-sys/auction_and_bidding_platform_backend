@@ -34,10 +34,10 @@ export default function AuctionCard({ auction, initialWatchlisted = false }) {
 
   return (
     <Link to={`/auctions/${auction.id}`} className="block group font-sans">
-      <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm hover:shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden transition-all duration-300 transform group-hover:-translate-y-1">
+      <div className="glass rounded-lg hover:shadow-2xl overflow-hidden transition-all duration-300 transform group-hover:-translate-y-1">
         
         {/* Thumbnail Layer */}
-        <div className="relative h-56 bg-slate-100 dark:bg-slate-800 overflow-hidden">
+        <div className="relative h-56 bg-slate-900/30 overflow-hidden">
           <img 
             src={coverImage} 
             alt={auction.title}

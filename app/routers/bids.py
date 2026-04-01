@@ -1,8 +1,12 @@
+from decimal import Decimal
+from datetime import datetime
+from typing import Optional
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
-from app.models.bid import Bid
+from app.models.bid import Bid, BidHistory
 from app.schemas.bid import BidCreate, BidResponse
 from app.dependencies import get_current_user
 from app.models.user import User
@@ -47,3 +51,56 @@ async def auction_ws(auction_id: int, websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         ws_manager.disconnect(auction_id, websocket)
+
+
+# ─── SECTION: Bid History (NEW) ───────────────────────────────────────────────
+
+class BidHistoryResponse(BaseModel):
+    id: int
+    auction_id: int
+    bid_id: int
+    previous_price: Decimal
+    new_price: Decimal
+    timestamp: datetime
+    model_config = {'from_attributes': True}
+
+
+@router.get('/{auction_id}/bid-history')
+async def get_bid_history(auction_id: int, db: AsyncSession = Depends(get_db)):
+    """Full chronological price history for an auction."""
+    result = await db.execute(
+        select(BidHistory)
+        .where(BidHistory.auction_id == auction_id)
+        .order_by(BidHistory.timestamp.asc())
+    )
+    rows = result.scalars().all()
+    return [
+        {
+            'id': r.id,
+            'bid_id': r.bid_id,
+            'previous_price': str(r.previous_price),
+            'new_price': str(r.new_price),
+            'timestamp': r.timestamp,
+        }
+        for r in rows
+    ]
+
+# ─── END SECTION: Bid History ─────────────────────────────────────────────────
+
+
+# ─── SECTION: My Bids (NEW) ───────────────────────────────────────────────────
+
+@router.get('/my-bids', response_model=list[BidResponse])
+async def my_bids(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Returns all bids placed by the currently authenticated user."""
+    result = await db.execute(
+        select(Bid)
+        .where(Bid.bidder_id == current_user.id)
+        .order_by(Bid.bid_time.desc())
+    )
+    return result.scalars().all()
+
+# ─── END SECTION: My Bids ─────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Text, Numeric, DateTime, Boolean, ForeignKey, func
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from app.database import Base
 from .user import TABLE_ARGS
  
@@ -28,7 +28,7 @@ class BidHistory(Base):
     bid_id         = Column(Integer, ForeignKey('bids.id'))
     previous_price = Column(Numeric(12, 2))
     new_price      = Column(Numeric(12, 2))
-    timestamp      = Column(DateTime, default=datetime.utcnow)
+    timestamp      = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
  
 class AuctionExtension(Base):
     __tablename__ = 'auction_extensions'

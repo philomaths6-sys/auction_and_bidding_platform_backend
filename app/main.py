@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import auth, users, auctions, bids, comments, watchlist, notifications, payments, ratings, admin
+from app.routers import auth, users, auctions, bids, comments, watchlist, notifications, payments, ratings, admin, categories
 
 app = FastAPI(
     title='Auction Platform API',
@@ -27,6 +27,7 @@ app.include_router(notifications.router)
 app.include_router(payments.router)
 app.include_router(ratings.router)
 app.include_router(admin.router)
+app.include_router(categories.router)
 
 
 @app.on_event('startup')

@@ -1,5 +1,5 @@
 from decimal import Decimal
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.auction import Auction
@@ -33,7 +33,10 @@ async def place_bid(
             raise ValueError('Auction not found')
         if auction.auction_status != 'active':
             raise ValueError('Auction is not active')
-        if datetime.utcnow() > auction.end_time:
+            
+        # MySQL strips tzinfo; safely restore it if missing
+        end_time_utc = auction.end_time.replace(tzinfo=timezone.utc) if auction.end_time.tzinfo is None else auction.end_time
+        if datetime.now(timezone.utc) > end_time_utc:
             raise ValueError('Auction has ended')
         if amount <= auction.current_price:
             raise ValueError(f'Bid must exceed current price of {auction.current_price}')
@@ -76,9 +79,9 @@ async def place_bid(
         auction.total_bids   += 1
  
         # Anti-snipe extension
-        seconds_left = (auction.end_time - datetime.utcnow()).total_seconds()
+        seconds_left = (end_time_utc - datetime.now(timezone.utc)).total_seconds()
         if seconds_left < ANTI_SNIPE_WINDOW:
-            auction.end_time += timedelta(seconds=ANTI_SNIPE_EXTEND)
+            auction.end_time = end_time_utc + timedelta(seconds=ANTI_SNIPE_EXTEND)
             db.add(AuctionExtension(
                 auction_id=auction_id,
                 extended_seconds=ANTI_SNIPE_EXTEND,

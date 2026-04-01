@@ -64,7 +64,7 @@ export default function Navbar() {
 
   return (
     <>
-      <nav className="bg-white dark:bg-slate-900 shadow-sm border-b border-slate-200 dark:border-slate-800 sticky top-0 z-40 transition-colors duration-200 font-sans">
+      <nav className="glass sticky top-0 z-40 transition-colors duration-200 font-sans">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           
           {/* Logo & Mega Menu Trigger */}
@@ -145,6 +145,13 @@ export default function Navbar() {
                 <Link to="/dashboard" className="text-slate-600 dark:text-slate-300 hover:text-amber-500 dark:hover:text-amber-400 flex items-center gap-1 font-bold transition-colors uppercase tracking-wide text-sm ml-2">
                   <User className="w-5 h-5" /> <span className="hidden sm:inline">Account</span>
                 </Link>
+                
+                <button
+                  onClick={() => navigate('/settings')}
+                  className="text-slate-600 dark:text-slate-300 hover:text-amber-500 dark:hover:text-amber-400 font-bold transition-colors uppercase tracking-wide text-sm"
+                >
+                  Settings
+                </button>
 
                 {user.role === 'admin' && (
                   <Link to="/admin" className="ml-2 bg-slate-900 border border-amber-500/30 text-amber-500 hover:bg-slate-800 flex items-center gap-1.5 font-black uppercase tracking-widest text-[10px] sm:text-xs px-3 py-1.5 rounded shadow-sm shadow-amber-500/10 transition-colors">

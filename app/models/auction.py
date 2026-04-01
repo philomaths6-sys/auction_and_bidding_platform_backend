@@ -12,6 +12,7 @@ class Category(Base):
     name               = Column(String(100), nullable=False)
     description        = Column(Text)
     parent_category_id = Column(Integer, ForeignKey('categories.id'), nullable=True)
+    is_active          = Column(Boolean, default=True)
     created_at         = Column(DateTime(timezone=True), server_default=func.now())
  
     subcategories = relationship('Category', back_populates='parent')
@@ -32,16 +33,16 @@ class Auction(Base):
     current_price  = Column(Numeric(12, 2), nullable=False)
     auction_status = Column(String(20), default='draft')
                    # draft | active | ended | cancelled
-    start_time     = Column(DateTime, nullable=False)
-    end_time       = Column(DateTime, nullable=False, index=True)
+    start_time     = Column(DateTime(timezone=True), nullable=False)
+    end_time       = Column(DateTime(timezone=True), nullable=False, index=True)
     total_bids     = Column(Integer, default=0)
     total_views    = Column(Integer, default=0)
     created_at     = Column(DateTime(timezone=True), server_default=func.now())
  
     seller     = relationship('User', back_populates='auctions')
     category   = relationship('Category')
-    images     = relationship('AuctionImage', back_populates='auction')
-    attributes = relationship('AuctionAttribute', back_populates='auction')
+    images     = relationship('AuctionImage', back_populates='auction', lazy='selectin')
+    attributes = relationship('AuctionAttribute', back_populates='auction', lazy='selectin')
     bids       = relationship('Bid', back_populates='auction')
  
 class AuctionImage(Base):
