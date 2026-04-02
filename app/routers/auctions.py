@@ -487,6 +487,21 @@ async def change_auction_status(
 # ─── END SECTION: Auction Status Management ───────────────────────────────────
 
 
+# ─── SECTION: Manual Auction Closing (for testing) ───────────────────────────
+
+@router.post('/close-ended-auctions')
+async def manual_close_ended_auctions(current_user: User = Depends(get_current_user)):
+    """Manually trigger the closing of ended auctions (admin only for testing)."""
+    if current_user.role != 'admin':
+        raise HTTPException(403, 'Admin access required')
+    
+    from app.services.auction_service import close_ended_auctions
+    await close_ended_auctions()
+    return {'message': 'Ended auctions processed successfully'}
+
+# ─── END SECTION: Manual Auction Closing ───────────────────────────────────────
+
+
 # ─── SECTION: Auction Winner (NEW) ───────────────────────────────────────────
 
 @router.get('/{auction_id}/winner', response_model=AuctionWinnerResponse)

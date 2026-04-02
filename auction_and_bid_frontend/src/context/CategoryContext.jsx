@@ -14,7 +14,8 @@ const buildTree = (categories) => {
     if (c.parent_category_id) {
       const parent = byId.get(c.parent_category_id);
       if (parent) parent.children.push(c);
-      else roots.push(c);
+      // If parent_category_id exists but parent is not found, don't add to roots
+      // This prevents orphaned categories from appearing as parent categories
     } else {
       roots.push(c);
     }

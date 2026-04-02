@@ -195,6 +195,48 @@ async def promote_to_admin(
 # ─── END SECTION: Promote Admin ───────────────────────────────────────────────
 
 
+# ─── SECTION: Admin Auction Management (NEW) ───────────────────────────────
+
+@router.post('/auctions/{auction_id}/cancel')
+async def admin_cancel_auction(
+    auction_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Admin: cancel any active auction."""
+    auction = await db.get(Auction, auction_id)
+    if not auction:
+        raise HTTPException(404, 'Auction not found')
+    if auction.auction_status != 'active':
+        raise HTTPException(400, 'Only active auctions can be cancelled')
+    
+    auction.auction_status = 'cancelled'
+    await log_action(admin.id, 'admin_cancel_auction', 'auction', auction_id, db)
+    await db.commit()
+    return {'auction_id': auction_id, 'auction_status': 'cancelled'}
+
+
+@router.delete('/auctions/{auction_id}')
+async def admin_delete_auction(
+    auction_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Admin: delete any cancelled or ended auction."""
+    auction = await db.get(Auction, auction_id)
+    if not auction:
+        raise HTTPException(404, 'Auction not found')
+    if auction.auction_status == 'active':
+        raise HTTPException(400, 'Cannot delete active auction. Cancel it first.')
+    
+    await db.delete(auction)
+    await log_action(admin.id, 'admin_delete_auction', 'auction', auction_id, db)
+    await db.commit()
+    return {'message': f'Auction {auction_id} deleted successfully'}
+
+# ─── END SECTION: Admin Auction Management ───────────────────────────────────
+
+
 @router.get('/featured-auctions', response_model=List[int])
 async def get_featured_auctions(
     admin: User = Depends(require_admin),

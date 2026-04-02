@@ -152,7 +152,7 @@ export default function Home() {
 
       setAuctions(data);
     } catch (err) {
-      console.error(err);
+      console.error('❌ Error fetching auctions:', err);
     } finally {
       setLoading(false);
     }
@@ -428,7 +428,10 @@ export default function Home() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6 auto-rows-max">
               {auctions.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((auction) => (
-                <AuctionCard key={auction.id} auction={auction} />
+                <AuctionCard 
+                  key={auction.id} 
+                  auction={auction} 
+                />
               ))}
             </div>
             <Pagination

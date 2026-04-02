@@ -81,6 +81,17 @@ export const auctionService = {
 
   deleteAttribute: async (auctionId, attributeId) => {
     await axiosClient.delete(`/auctions/${auctionId}/attributes/${attributeId}`);
+  },
+
+  // Admin auction management
+  adminCancelAuction: async (auctionId) => {
+    const { data } = await axiosClient.post(`/admin/auctions/${auctionId}/cancel`);
+    return data;
+  },
+
+  adminDeleteAuction: async (auctionId) => {
+    const { data } = await axiosClient.delete(`/admin/auctions/${auctionId}`);
+    return data;
   }
 };
 

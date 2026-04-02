@@ -20,8 +20,7 @@ export default function AuctionCard({ auction, initialWatchlisted = false, varia
   const viewLabel = Number.isFinite(views) ? views.toLocaleString() : '0';
 
   const endDate = safeEndDate(auction.end_time);
-  const isEnded =
-    auction.auction_status === 'ended' || (endDate != null && endDate < new Date());
+  const isEnded = auction.auction_status === 'ended';
   const coverImage = auction.images?.find(img => img.is_primary)?.image_url 
     || auction.images?.[0]?.image_url 
     || 'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?auto=format&fit=crop&q=80&w=800';

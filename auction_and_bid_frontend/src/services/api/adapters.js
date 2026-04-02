@@ -25,17 +25,28 @@ export const normalizeAuction = (auction, categoryById) => {
   if (!auction) return auction;
   const category = categoryById?.get?.(auction.category_id) || null;
 
+  // Get parent category if available
+  let parentCategoryName = null;
+  if (category?.parent_category_id && categoryById) {
+    const parentCategory = categoryById.get(category.parent_category_id);
+    parentCategoryName = parentCategory?.name || null;
+  }
+
+  // Determine display category name: use category if it exists, otherwise use parent
+  const displayCategoryName = category?.name || parentCategoryName;
+
   return {
     ...auction,
     seller_username: auction.seller_username ?? null,
-    // Backend does not provide created_at in AuctionResponse; use start_time for “newest”.
+    // Backend does not provide created_at in AuctionResponse; use start_time for "newest".
     created_at: auction.created_at || auction.start_time || null,
     current_price: toNumber(auction.current_price) ?? 0,
     starting_price: toNumber(auction.starting_price) ?? 0,
     reserve_price: toNumber(auction.reserve_price),
     total_bids: toNumber(auction.total_bids) ?? 0,
     total_views: toNumber(auction.total_views) ?? 0,
-    category_name: category?.name || null,
+    category_name: displayCategoryName,
+    parent_category_name: parentCategoryName,
     primary_image_url: pickPrimaryImageUrl(auction),
   };
 };

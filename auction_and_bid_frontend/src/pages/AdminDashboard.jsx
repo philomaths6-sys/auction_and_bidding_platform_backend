@@ -116,7 +116,39 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleDeleteAuction = async (auctionId) => {
+  const handleAdminCancelAuction = async (auctionId) => {
+  const auction = allAuctions.find(a => a.id === auctionId);
+  if (!auction) return;
+  
+  if (!window.confirm(`Cancel auction "${auction.title}"? This will set the auction status to cancelled.`)) return;
+  
+  try {
+    await auctionService.adminCancelAuction(auctionId);
+    setAllAuctions(prev => 
+      prev.map(a => a.id === auctionId ? { ...a, auction_status: 'cancelled' } : a)
+    );
+    addToast('Auction cancelled successfully', 'success');
+  } catch (e) {
+    addToast(formatApiError(e, 'Failed to cancel auction'), 'error');
+  }
+};
+
+const handleAdminDeleteAuction = async (auctionId) => {
+  const auction = allAuctions.find(a => a.id === auctionId);
+  if (!auction) return;
+  
+  if (!window.confirm(`Delete auction "${auction.title}"? This action cannot be undone.`)) return;
+  
+  try {
+    await auctionService.adminDeleteAuction(auctionId);
+    setAllAuctions(prev => prev.filter(a => a.id !== auctionId));
+    addToast('Auction deleted successfully', 'success');
+  } catch (e) {
+    addToast(formatApiError(e, 'Failed to delete auction'), 'error');
+  }
+};
+
+const handleDeleteAuction = async (auctionId) => {
     try {
       await auctionService.deleteAuction(auctionId);
       setAllAuctions(prev => prev.filter(a => a.id !== auctionId));
@@ -403,14 +435,24 @@ export default function AdminDashboard() {
                         </button>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        {a.auction_status !== 'active' && (
-                          <button
-                            onClick={() => handleDeleteAuction(a.id)}
-                            className="text-xs font-black uppercase tracking-widest text-red-600 hover:text-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded transition-colors flex items-center gap-1 ml-auto"
-                          >
-                            <Trash2 className="w-3 h-3" /> Remove
-                          </button>
-                        )}
+                        <div className="flex items-center gap-2 justify-end">
+                          {a.auction_status === 'active' && (
+                            <button
+                              onClick={() => handleAdminCancelAuction(a.id)}
+                              className="text-xs font-black uppercase tracking-widest text-orange-600 hover:text-orange-800 bg-orange-50 dark:bg-orange-900/20 px-3 py-1.5 rounded transition-colors flex items-center gap-1"
+                            >
+                              <Ban className="w-3 h-3" /> Cancel
+                            </button>
+                          )}
+                          {a.auction_status !== 'active' && (
+                            <button
+                              onClick={() => handleAdminDeleteAuction(a.id)}
+                              className="text-xs font-black uppercase tracking-widest text-red-600 hover:text-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded transition-colors flex items-center gap-1"
+                            >
+                              <Trash2 className="w-3 h-3" /> Delete
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
