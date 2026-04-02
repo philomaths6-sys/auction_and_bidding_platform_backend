@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
@@ -11,13 +12,29 @@ from app.schemas.auction import (
     AuctionCreate, AuctionUpdate, AuctionResponse,
     AuctionImageCreate, AuctionImageResponse,
     AuctionAttributeCreate, AuctionAttributeResponse,
-    AuctionStatusUpdate, AuctionWinnerResponse,
+    AuctionStatusUpdate, AuctionWinnerResponse, HomeFeedResponse,
 )
 from app.dependencies import get_current_user, get_optional_user
 from app.models.user import User
+from app.utils.redis_client import get_redis
 
 
 router = APIRouter(prefix='/auctions', tags=['Auctions'])
+FEATURED_AUCTIONS_KEY = 'home:featured:auction_ids'
+
+
+async def _load_auction_for_response(db: AsyncSession, auction_id: int) -> Auction | None:
+    """Eager-load seller + children so AuctionResponse serializes without lazy IO."""
+    r = await db.execute(
+        select(Auction)
+        .options(
+            selectinload(Auction.seller),
+            selectinload(Auction.images),
+            selectinload(Auction.attributes),
+        )
+        .where(Auction.id == auction_id)
+    )
+    return r.scalar_one_or_none()
 
 
 @router.post('/', response_model=AuctionResponse, status_code=201)
@@ -48,7 +65,10 @@ async def create_auction(
     db.add(auction)
     await db.commit()
     await db.refresh(auction)
-    return auction
+    loaded = await _load_auction_for_response(db, auction.id)
+    if not loaded:
+        raise HTTPException(500, 'Auction created but could not be reloaded')
+    return loaded
 
 
 @router.get('/', response_model=List[AuctionResponse])
@@ -60,13 +80,94 @@ async def list_auctions(
     skip: int = 0, limit: int = 100,
     db: AsyncSession = Depends(get_db)
 ):
-    q = select(Auction)
+    q = select(Auction).options(
+        selectinload(Auction.seller),
+        selectinload(Auction.images),
+        selectinload(Auction.attributes),
+        selectinload(Auction.category),
+    )
     if status:      q = q.where(Auction.auction_status == status)
     if category_id: q = q.where(Auction.category_id == category_id)
     if min_price is not None: q = q.where(Auction.current_price >= min_price)
     if max_price is not None: q = q.where(Auction.current_price <= max_price)
     result = await db.execute(q.order_by(Auction.created_at.desc()).offset(skip).limit(limit))
-    return result.scalars().all()
+    auctions = result.scalars().all()
+    
+    # Handle deleted categories by setting category_name to None
+    for auction in auctions:
+        if auction.category and not auction.category.is_active:
+            auction.category_name = None
+        elif auction.category:
+            auction.category_name = auction.category.name
+        else:
+            auction.category_name = None
+    
+    return auctions
+
+
+@router.get('/home-feed', response_model=HomeFeedResponse)
+async def get_home_feed(
+    featured_limit: int = 3,
+    latest_limit: int = 8,
+    db: AsyncSession = Depends(get_db),
+):
+    redis = await get_redis()
+    raw_ids = await redis.lrange(FEATURED_AUCTIONS_KEY, 0, max(0, featured_limit - 1))
+    featured_ids = [int(v) for v in raw_ids if str(v).isdigit()]
+
+    featured_map: dict[int, Auction] = {}
+    if featured_ids:
+        fr = await db.execute(
+            select(Auction)
+            .options(
+                selectinload(Auction.seller),
+                selectinload(Auction.images),
+                selectinload(Auction.attributes),
+                selectinload(Auction.category),
+            )
+            .where(Auction.id.in_(featured_ids), Auction.auction_status == 'active')
+        )
+        featured_auctions = fr.scalars().all()
+        for auction in featured_auctions:
+            if auction.category and not auction.category.is_active:
+                auction.category_name = None
+            elif auction.category:
+                auction.category_name = auction.category.name
+            else:
+                auction.category_name = None
+        featured_map = {a.id: a for a in featured_auctions}
+
+    featured = [featured_map[i] for i in featured_ids if i in featured_map]
+    excluded = [a.id for a in featured]
+
+    q = (
+        select(Auction)
+        .options(
+            selectinload(Auction.seller),
+            selectinload(Auction.images),
+            selectinload(Auction.attributes),
+            selectinload(Auction.category),
+        )
+        .where(Auction.auction_status == 'active')
+        .order_by(Auction.created_at.desc())
+        .limit(max(0, latest_limit + len(excluded)))
+    )
+    if excluded:
+        q = q.where(~Auction.id.in_(excluded))
+
+    lr = await db.execute(q)
+    latest_auctions = lr.scalars().all()[: max(0, latest_limit)]
+    
+    # Handle deleted categories for latest auctions
+    for auction in latest_auctions:
+        if auction.category and not auction.category.is_active:
+            auction.category_name = None
+        elif auction.category:
+            auction.category_name = auction.category.name
+        else:
+            auction.category_name = None
+    
+    return {'featured': featured, 'latest': latest_auctions}
 
 
 # ─── SECTION: Search Auctions (NEW) ──────────────────────────────────────────
@@ -82,6 +183,12 @@ async def search_auctions(
     from sqlalchemy import or_
     result = await db.execute(
         select(Auction)
+        .options(
+            selectinload(Auction.seller),
+            selectinload(Auction.images),
+            selectinload(Auction.attributes),
+            selectinload(Auction.category),
+        )
         .where(
             Auction.auction_status == 'active',
             or_(
@@ -92,7 +199,18 @@ async def search_auctions(
         .order_by(Auction.end_time.asc())
         .offset(skip).limit(limit)
     )
-    return result.scalars().all()
+    auctions = result.scalars().all()
+    
+    # Handle deleted categories
+    for auction in auctions:
+        if auction.category and not auction.category.is_active:
+            auction.category_name = None
+        elif auction.category:
+            auction.category_name = auction.category.name
+        else:
+            auction.category_name = None
+    
+    return auctions
 
 # ─── END SECTION: Search Auctions ────────────────────────────────────────────
 
@@ -107,10 +225,27 @@ async def my_auctions(
     """Returns all auctions created by the current user."""
     result = await db.execute(
         select(Auction)
+        .options(
+            selectinload(Auction.seller),
+            selectinload(Auction.images),
+            selectinload(Auction.attributes),
+            selectinload(Auction.category),
+        )
         .where(Auction.seller_id == current_user.id)
         .order_by(Auction.created_at.desc())
     )
-    return result.scalars().all()
+    auctions = result.scalars().all()
+    
+    # Handle deleted categories
+    for auction in auctions:
+        if auction.category and not auction.category.is_active:
+            auction.category_name = None
+        elif auction.category:
+            auction.category_name = auction.category.name
+        else:
+            auction.category_name = None
+    
+    return auctions
 
 # ─── END SECTION: Seller's Own Auctions ──────────────────────────────────────
 
@@ -122,8 +257,26 @@ async def get_auction(
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(get_optional_user)
 ):
-    auction = await db.get(Auction, auction_id)
+    result = await db.execute(
+        select(Auction)
+        .options(
+            selectinload(Auction.seller),
+            selectinload(Auction.images),
+            selectinload(Auction.attributes),
+            selectinload(Auction.category),
+        )
+        .where(Auction.id == auction_id)
+    )
+    auction = result.scalar_one_or_none()
     if not auction: raise HTTPException(404, 'Auction not found')
+    
+    # Handle deleted category
+    if auction.category and not auction.category.is_active:
+        auction.category_name = None
+    elif auction.category:
+        auction.category_name = auction.category.name
+    else:
+        auction.category_name = None
     db.add(AuctionView(
         auction_id=auction_id,
         user_id=current_user.id if current_user else None,
@@ -131,8 +284,10 @@ async def get_auction(
     ))
     auction.total_views += 1
     await db.commit()
-    await db.refresh(auction)
-    return auction
+    loaded = await _load_auction_for_response(db, auction_id)
+    if not loaded:
+        raise HTTPException(500, 'Auction updated but could not be reloaded')
+    return loaded
 
 
 # ─── SECTION: Update Auction (NEW) ───────────────────────────────────────────
@@ -145,7 +300,16 @@ async def update_auction(
     db: AsyncSession = Depends(get_db)
 ):
     """Seller can update their auction while it is in draft status."""
-    auction = await db.get(Auction, auction_id)
+    result = await db.execute(
+        select(Auction)
+        .options(
+            selectinload(Auction.seller),
+            selectinload(Auction.images),
+            selectinload(Auction.attributes),
+        )
+        .where(Auction.id == auction_id)
+    )
+    auction = result.scalar_one_or_none()
     if not auction or auction.seller_id != current_user.id:
         raise HTTPException(403, 'Not authorised')
     if auction.auction_status not in ('draft',):
@@ -159,8 +323,10 @@ async def update_auction(
     for field, value in data.model_dump(exclude_none=True).items():
         setattr(auction, field, value)
     await db.commit()
-    await db.refresh(auction)
-    return auction
+    loaded = await _load_auction_for_response(db, auction_id)
+    if not loaded:
+        raise HTTPException(500, 'Auction updated but could not be reloaded')
+    return loaded
 
 # ─── END SECTION: Update Auction ─────────────────────────────────────────────
 

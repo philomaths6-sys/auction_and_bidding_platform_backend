@@ -5,13 +5,31 @@ const ToastContext = createContext();
 
 export const useToast = () => useContext(ToastContext);
 
+function toastMessageToString(message) {
+  if (message == null || message === '') return '';
+  if (typeof message === 'string' || typeof message === 'number' || typeof message === 'boolean') {
+    return String(message);
+  }
+  if (Array.isArray(message)) {
+    const s = message.map(toastMessageToString).filter(Boolean).join('; ');
+    return s || 'Invalid request';
+  }
+  if (typeof message === 'object' && typeof message.msg === 'string') return message.msg;
+  try {
+    return JSON.stringify(message);
+  } catch {
+    return 'Invalid request';
+  }
+}
+
 export const ToastProvider = ({ children }) => {
   const [toasts, setToasts] = useState([]);
 
   const addToast = useCallback((message, type = 'info', duration = 4000) => {
     const id = Date.now().toString();
+    const safeMessage = toastMessageToString(message);
     setToasts(prev => {
-      const newToasts = [...prev, { id, message, type }];
+      const newToasts = [...prev, { id, message: safeMessage, type }];
       return newToasts.slice(-3); // max 3 visible stack per instructions
     });
 

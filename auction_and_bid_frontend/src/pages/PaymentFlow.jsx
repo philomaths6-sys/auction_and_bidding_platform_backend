@@ -5,6 +5,7 @@ import { paymentService } from '../services/api/paymentService';
 import { ratingService } from '../services/api/ratingService';
 import { useToast } from '../context/ToastContext';
 import { ShieldCheck, CreditCard, Wallet, Lock, CheckCircle2, Star, ChevronLeft } from 'lucide-react';
+import { formatApiError } from '../utils/apiError';
 
 export default function PaymentFlow() {
   const { id } = useParams();
@@ -39,7 +40,7 @@ export default function PaymentFlow() {
       setIsSuccess(true);
       window.scrollTo(0, 0);
     } catch (err) {
-      addToast(err.response?.data?.detail || 'Payment failed. Please try again.', 'error');
+      addToast(formatApiError(err, 'Payment failed. Please try again.'), 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -59,7 +60,7 @@ export default function PaymentFlow() {
       addToast('Thank you! Your seller review has been published.', 'success');
       navigate('/dashboard');
     } catch (err) {
-      addToast(err.response?.data?.detail || 'Failed to submit rating', 'error');
+      addToast(formatApiError(err, 'Failed to submit rating'), 'error');
     } finally {
       setIsRatingSubmitting(false);
     }
@@ -105,7 +106,9 @@ export default function PaymentFlow() {
         {/* Rate Seller Component */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 shadow-sm">
           <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight mb-2 text-center">Rate Your Seller</h2>
-          <p className="text-slate-500 text-center text-sm font-medium mb-6">How was your transaction experience with User {auction.seller_id}?</p>
+          <p className="text-slate-500 text-center text-sm font-medium mb-6">
+            How was your transaction experience with @{auction.seller_username || `user${auction.seller_id}`}?
+          </p>
           
           <form onSubmit={handleSubmitRating}>
             <div className="flex justify-center gap-2 mb-6">

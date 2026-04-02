@@ -27,6 +27,7 @@ export const normalizeAuction = (auction, categoryById) => {
 
   return {
     ...auction,
+    seller_username: auction.seller_username ?? null,
     // Backend does not provide created_at in AuctionResponse; use start_time for “newest”.
     created_at: auction.created_at || auction.start_time || null,
     current_price: toNumber(auction.current_price) ?? 0,

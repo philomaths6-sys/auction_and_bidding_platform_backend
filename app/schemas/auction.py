@@ -85,7 +85,9 @@ class AuctionResponse(BaseModel):
     title: str
     description: str
     seller_id: int
+    seller_username: str | None = None
     category_id: int
+    category_name: str | None = None
     starting_price: Decimal
     current_price: Decimal
     auction_status: str
@@ -96,6 +98,11 @@ class AuctionResponse(BaseModel):
     attributes: List[AuctionAttributeResponse] = []
     images: List[AuctionImageResponse] = []    # images field added
     model_config = {'from_attributes': True}
+
+
+class HomeFeedResponse(BaseModel):
+    featured: List[AuctionResponse] = []
+    latest: List[AuctionResponse] = []
 
 
 # ─── SECTION: Auction Status & Winner (NEW) ───────────────────────────────────

@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { adminService } from '../services/api/adminService';
 import { auctionService } from '../services/api/auctionService';
+import { categoryService } from '../services/api/categoryService';
 import { useToast } from '../context/ToastContext';
-import { Users, AlertTriangle, ShieldAlert, Activity, Ban, CheckCircle2, MoreVertical, Search, FileText, ScrollText, Shield, Trash2, TrendingUp } from 'lucide-react';
+import { Users, AlertTriangle, ShieldAlert, Activity, Ban, CheckCircle2, MoreVertical, Search, FileText, ScrollText, Shield, Trash2, TrendingUp, Plus, Edit } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { formatApiError } from '../utils/apiError';
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -16,9 +18,13 @@ export default function AdminDashboard() {
   const [logs, setLogs] = useState([]);
   const [users, setUsers] = useState([]);
   const [allAuctions, setAllAuctions] = useState([]);
+  const [featuredAuctionIds, setFeaturedAuctionIds] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [banInput, setBanInput] = useState('');
   const [userSearch, setUserSearch] = useState('');
+  const [showCreateCategory, setShowCreateCategory] = useState(false);
+  const [newCategory, setNewCategory] = useState({ name: '', parent_category_id: null });
 
   useEffect(() => {
     fetchAdminData();
@@ -27,18 +33,22 @@ export default function AdminDashboard() {
   const fetchAdminData = async () => {
     setLoading(true);
     try {
-      const [reps, flags, usersData, logsData, auctionsData] = await Promise.all([
+      const [reps, flags, usersData, logsData, auctionsData, featuredIds, categoriesData] = await Promise.all([
         adminService.getReports().catch(() => []),
         adminService.getFraudFlags().catch(() => []),
         adminService.getAllUsers().catch(() => []),
         adminService.getLogs().catch(() => []),
-        auctionService.getAuctions(0, 200).catch(() => [])
+        auctionService.getAuctions(0, 200).catch(() => []),
+        adminService.getFeaturedAuctions().catch(() => []),
+        categoryService.getAllCategoriesForAdmin().catch(() => [])
       ]);
       setReports(reps);
       setFraudFlags(flags);
       setUsers(usersData);
       setLogs(logsData);
       setAllAuctions(auctionsData);
+      setFeaturedAuctionIds(featuredIds);
+      setCategories(categoriesData);
     } catch (e) {
       console.error(e);
       addToast('Failed to load some admin data', 'error');
@@ -56,7 +66,7 @@ export default function AdminDashboard() {
       setUsers(prev => prev.map(u => (u.id.toString() === identifier.toString() || u.username === identifier) ? { ...u, role: 'banned' } : u));
       setBanInput('');
     } catch (e) {
-      addToast(e.response?.data?.detail || 'Failed to ban user', 'error');
+      addToast(formatApiError(e, 'Failed to ban user'), 'error');
     }
   };
 
@@ -66,7 +76,7 @@ export default function AdminDashboard() {
       addToast(`User #${userId} promoted to admin`, 'success');
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: 'admin' } : u));
     } catch (e) {
-      addToast(e.response?.data?.detail || 'Failed to promote user', 'error');
+      addToast(formatApiError(e, 'Failed to promote user'), 'error');
     }
   };
 
@@ -76,7 +86,33 @@ export default function AdminDashboard() {
       setReports(prev => prev.filter(r => r.id !== reportId));
       addToast(`Report ${status}`, 'success');
     } catch (e) {
-      addToast('Failed to update report', 'error');
+      addToast(formatApiError(e, 'Failed to update report'), 'error');
+    }
+  };
+
+  const handleDeleteReport = async (reportId) => {
+    if (!window.confirm('Permanently remove this report?')) return;
+    try {
+      await adminService.deleteReport(reportId);
+      setReports((prev) => prev.filter((r) => r.id !== reportId));
+      addToast('Report removed', 'success');
+    } catch (e) {
+      addToast(formatApiError(e, 'Failed to remove report'), 'error');
+    }
+  };
+
+  const handleCancelAuctionFromReport = async (r) => {
+    const title = r.auction_title || `Auction #${r.auction_id}`;
+    if (!window.confirm(`Cancel listing “${title}”? The auction will be set to cancelled.`)) return;
+    try {
+      await adminService.cancelAuctionFromReport(r.id);
+      setReports((prev) => prev.filter((rep) => rep.id !== r.id));
+      setAllAuctions((prev) =>
+        prev.map((a) => (a.id === r.auction_id ? { ...a, auction_status: 'cancelled' } : a))
+      );
+      addToast('Auction cancelled', 'success');
+    } catch (e) {
+      addToast(formatApiError(e, 'Could not cancel auction'), 'error');
     }
   };
 
@@ -86,7 +122,21 @@ export default function AdminDashboard() {
       setAllAuctions(prev => prev.filter(a => a.id !== auctionId));
       addToast('Auction removed', 'success');
     } catch (e) {
-      addToast(e.response?.data?.detail || 'Failed to delete auction', 'error');
+      addToast(formatApiError(e, 'Failed to delete auction'), 'error');
+    }
+  };
+
+  const handleToggleFeatured = async (auctionId) => {
+    const currentlyFeatured = featuredAuctionIds.includes(auctionId);
+    const next = currentlyFeatured
+      ? featuredAuctionIds.filter((id) => id !== auctionId)
+      : [auctionId, ...featuredAuctionIds].slice(0, 12);
+    try {
+      const saved = await adminService.setFeaturedAuctions(next);
+      setFeaturedAuctionIds(saved);
+      addToast(currentlyFeatured ? 'Removed from featured' : 'Added to featured', 'success');
+    } catch (e) {
+      addToast(formatApiError(e, 'Failed to update featured auctions'), 'error');
     }
   };
 
@@ -95,6 +145,46 @@ export default function AdminDashboard() {
     if (role === 'seller') return <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-500 px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-widest">Seller</span>;
     if (role === 'banned') return <span className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-widest">Banned</span>;
     return <span className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400 px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-widest">User</span>;
+  };
+
+  const handleDeactivateCategory = async (category) => {
+    if (!window.confirm(`Deactivate category "${category.name}"? This will make it inactive but won't delete it permanently.`)) return;
+    try {
+      await categoryService.deactivateCategory(category.id);
+      addToast('Category deactivated successfully', 'success');
+      fetchAdminData();
+    } catch (e) {
+      addToast(formatApiError(e, 'Failed to deactivate category'), 'error');
+    }
+  };
+
+  const handleDeleteCategory = async (category) => {
+    if (!window.confirm(`Permanently delete category "${category.name}"? This action cannot be undone and will set category_id to NULL for all auctions using this category.`)) return;
+    try {
+      await categoryService.deleteCategory(category.id);
+      addToast('Category deleted permanently', 'success');
+      fetchAdminData();
+    } catch (e) {
+      addToast(formatApiError(e, 'Failed to delete category'), 'error');
+    }
+  };
+
+  const handleCreateCategory = async () => {
+    if (!newCategory.name.trim()) return addToast('Category name is required', 'error');
+    try {
+      const payload = {
+        name: newCategory.name.trim(),
+        parent_category_id: newCategory.parent_category_id || null
+      };
+      
+      const response = await categoryService.createCategory(payload);
+      addToast('Category created successfully', 'success');
+      setNewCategory({ name: '', parent_category_id: null });
+      setShowCreateCategory(false);
+      fetchAdminData();
+    } catch (e) {
+      addToast(formatApiError(e, 'Failed to create category'), 'error');
+    }
   };
 
   if (user?.role !== 'admin') {
@@ -118,9 +208,10 @@ export default function AdminDashboard() {
     { id: 'overview', icon: <Activity className="w-4 h-4" />, label: 'Overview' },
     { id: 'users', icon: <Users className="w-4 h-4" />, label: 'User Directory', badge: users.length },
     { id: 'auctions', icon: <TrendingUp className="w-4 h-4" />, label: 'All Auctions', badge: allAuctions.length },
-    { id: 'reports', icon: <FileText className="w-4 h-4" />, label: 'Reports', badge: reports.length },
+    { id: 'categories', icon: <FileText className="w-4 h-4" />, label: 'Categories', badge: 0 },
+    { id: 'reports', icon: <ShieldAlert className="w-4 h-4" />, label: 'Reported Listings', badge: reports.length },
     { id: 'fraud', icon: <AlertTriangle className="w-4 h-4" />, label: 'Fraud Monitor', badge: fraudFlags.length },
-    { id: 'logs', icon: <ScrollText className="w-4 h-4" />, label: 'Admin Logs' }
+    { id: 'logs', icon: <ScrollText className="w-4 h-4" />, label: 'Admin Activity Log', badge: logs.length }
   ];
 
   return (
@@ -274,6 +365,7 @@ export default function AdminDashboard() {
                     <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-500">Seller</th>
                     <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-500">Price</th>
                     <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-500">Status</th>
+                    <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-500">Featured</th>
                     <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-500 text-right">Admin</th>
                   </tr>
                 </thead>
@@ -285,7 +377,9 @@ export default function AdminDashboard() {
                         <Link to={`/auctions/${a.id}`} className="hover:text-amber-500 transition-colors">{a.title}</Link>
                       </td>
                       <td className="px-6 py-4 text-sm font-medium text-slate-500">
-                        <Link to={`/seller/${a.seller_id}`} className="hover:text-amber-500">User #{a.seller_id}</Link>
+                        <Link to={`/seller/${a.seller_id}`} className="hover:text-amber-500">
+                          @{a.seller_username || `user${a.seller_id}`}
+                        </Link>
                       </td>
                       <td className="px-6 py-4 font-mono font-black text-amber-500">${a.current_price?.toLocaleString()}</td>
                       <td className="px-6 py-4">
@@ -295,6 +389,18 @@ export default function AdminDashboard() {
                           a.auction_status === 'cancelled' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
                           'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
                         }`}>{a.auction_status}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => handleToggleFeatured(a.id)}
+                          className={`text-xs font-black uppercase tracking-widest px-3 py-1.5 rounded transition-colors ${
+                            featuredAuctionIds.includes(a.id)
+                              ? 'bg-amber-500 text-slate-900'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-amber-500'
+                          }`}
+                        >
+                          {featuredAuctionIds.includes(a.id) ? 'Featured' : 'Feature'}
+                        </button>
                       </td>
                       <td className="px-6 py-4 text-right">
                         {a.auction_status !== 'active' && (
@@ -308,7 +414,7 @@ export default function AdminDashboard() {
                       </td>
                     </tr>
                   ))}
-                  {allAuctions.length === 0 && <tr><td colSpan="6" className="p-10 text-center font-bold text-slate-500 uppercase tracking-widest">No auctions in the system</td></tr>}
+                  {allAuctions.length === 0 && <tr><td colSpan="7" className="p-10 text-center font-bold text-slate-500 uppercase tracking-widest">No auctions in the system</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -337,15 +443,47 @@ export default function AdminDashboard() {
                     <div className="w-12 h-12 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center shrink-0">
                       <AlertTriangle className="w-6 h-6 text-orange-500" />
                     </div>
-                    <div className="flex-grow">
-                      <div className="flex justify-between items-start mb-2">
-                        <h4 className="font-bold text-slate-900 dark:text-white uppercase tracking-widest text-sm">Auction #{r.auction_id} · Reported by User #{r.reported_by}</h4>
-                        <span className="text-xs font-mono font-bold text-slate-400">{new Date(r.created_at).toLocaleString()}</span>
+                    <div className="flex-grow min-w-0">
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-3">
+                        <div className="space-y-1">
+                          <h4 className="font-black text-slate-900 dark:text-white uppercase tracking-widest text-sm">
+                            <Link
+                              to={`/auctions/${r.auction_id}`}
+                              className="hover:text-amber-500 transition-colors break-words"
+                            >
+                              {r.auction_title || `Auction #${r.auction_id}`}
+                            </Link>
+                          </h4>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                            Reported by{' '}
+                            <Link
+                              to={`/seller/${r.reported_by}`}
+                              className="text-indigo-600 dark:text-indigo-400 hover:text-amber-500"
+                            >
+                              @{r.reporter_username || `user${r.reported_by}`}
+                            </Link>
+                          </p>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-slate-400 shrink-0">{new Date(r.created_at).toLocaleString()}</span>
                       </div>
-                      <p className="text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-950 p-4 rounded-lg text-sm border border-slate-100 dark:border-slate-800 font-medium italic mb-4">"{r.reason}"</p>
-                      <div className="flex gap-2">
-                        <button onClick={() => handleReportAction(r.id, 'reviewed')} className="text-xs font-black uppercase tracking-widest text-amber-700 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 px-4 py-2 rounded transition-colors border border-amber-200 dark:border-amber-900">Mark Reviewed</button>
-                        <button onClick={() => handleReportAction(r.id, 'closed')} className="text-xs font-black uppercase tracking-widest text-slate-600 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-4 py-2 rounded transition-colors">Dismiss</button>
+                      <p className="text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-950 p-4 rounded-lg text-sm border border-slate-100 dark:border-slate-800 font-medium mb-4 whitespace-pre-wrap">{r.reason}</p>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => handleReportAction(r.id, 'reviewed')} className="text-xs font-black uppercase tracking-widest text-amber-700 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 px-4 py-2 rounded transition-colors border border-amber-200 dark:border-amber-900">Mark reviewed</button>
+                        <button type="button" onClick={() => handleReportAction(r.id, 'closed')} className="text-xs font-black uppercase tracking-widest text-slate-600 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-4 py-2 rounded transition-colors">Dismiss</button>
+                        <button
+                          type="button"
+                          onClick={() => handleCancelAuctionFromReport(r)}
+                          className="text-xs font-black uppercase tracking-widest text-red-700 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 px-4 py-2 rounded transition-colors border border-red-200 dark:border-red-900"
+                        >
+                          Cancel auction
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteReport(r.id)}
+                          className="text-xs font-black uppercase tracking-widest text-slate-500 hover:text-red-600 px-4 py-2 rounded transition-colors"
+                        >
+                          Remove report
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -435,6 +573,131 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* TAB: CATEGORIES */}
+        {activeTab === 'categories' && (
+          <div className="animate-in fade-in">
+            <div className="flex justify-between items-center mb-6">
+              <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight flex items-center gap-3">
+                <FileText className="w-6 h-6 text-amber-500" /> Category Management ({categories.length})
+              </h1>
+              <button 
+                onClick={() => setShowCreateCategory(true)}
+                className="bg-amber-500 hover:bg-amber-400 text-white font-black uppercase text-xs tracking-widest px-4 py-2 rounded transition-colors flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" /> Create Category
+              </button>
+            </div>
+            
+            {/* Categories List */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-x-auto shadow-sm">
+              <table className="w-full text-left">
+                <thead className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
+                  <tr>
+                    <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-500">ID</th>
+                    <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-500">Name</th>
+                    <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-500">Parent</th>
+                    <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-500">Status</th>
+                    <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-500">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+                  {categories.map(cat => (
+                    <tr key={cat.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors">
+                      <td className="px-6 py-4 font-mono font-bold text-slate-500">#{cat.id}</td>
+                      <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">{cat.name}</td>
+                      <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                        {cat.parent_category_id ? `#${cat.parent_category_id}` : 'Root'}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 rounded text-xs font-bold ${
+                          cat.is_active 
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
+                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                        }`}>
+                          {cat.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => handleDeactivateCategory(cat)}
+                            className={`text-xs font-bold uppercase tracking-widest px-2 py-1 rounded transition-colors ${
+                              cat.is_active 
+                                ? 'text-amber-600 hover:text-amber-700 dark:text-amber-400' 
+                                : 'text-green-600 hover:text-green-700 dark:text-green-400'
+                            }`}
+                          >
+                            {cat.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteCategory(cat)}
+                            className="text-xs font-bold uppercase tracking-widest px-2 py-1 rounded text-red-600 hover:text-red-700 dark:text-red-400"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Create Category Modal */}
+        {showCreateCategory && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-slate-900 rounded-xl p-6 w-full max-w-md border border-slate-200 dark:border-slate-800">
+              <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-4">Create New Category</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Category Name</label>
+                  <input
+                    type="text"
+                    value={newCategory.name}
+                    onChange={(e) => setNewCategory({...newCategory, name: e.target.value})}
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-amber-500 dark:text-white"
+                    placeholder="Enter category name"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Parent Category (Optional)</label>
+                  <select
+                    value={newCategory.parent_category_id || ''}
+                    onChange={(e) => setNewCategory({...newCategory, parent_category_id: e.target.value ? parseInt(e.target.value) : null})}
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-amber-500 dark:text-white"
+                  >
+                    <option value="">None (Root Category)</option>
+                    {categories.filter(cat => cat.is_active).map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowCreateCategory(false);
+                    setNewCategory({ name: '', parent_category_id: null });
+                  }}
+                  className="flex-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold uppercase text-xs tracking-widest px-4 py-2 rounded transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateCategory}
+                  className="flex-1 bg-amber-500 hover:bg-amber-400 text-white font-black uppercase text-xs tracking-widest px-4 py-2 rounded transition-colors"
+                >
+                  Create
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -5,14 +5,477 @@
 @layer base {
   body {
     @apply bg-slate-950 text-slate-100 antialiased;
+    background-image: 
+      radial-gradient(circle at 20% 80%, rgba(251, 191, 36, 0.08) 0%, transparent 50%),
+      radial-gradient(circle at 80% 20%, rgba(20, 184, 166, 0.06) 0%, transparent 50%),
+      radial-gradient(circle at 40% 40%, rgba(251, 191, 36, 0.05) 0%, transparent 50%),
+      repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(255, 255, 255, 0.01) 40px, rgba(255, 255, 255, 0.01) 41px),
+      repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(255, 255, 255, 0.01) 40px, rgba(255, 255, 255, 0.01) 41px);
+    position: relative;
+  }
+
+  /* Ambient Blobs */
+  body::before,
+  body::after {
+    content: '';
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.08;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  body::before {
+    width: 600px;
+    height: 600px;
+    background: rgba(26, 26, 46, 0.3);
+    top: -200px;
+    left: -200px;
+  }
+
+  body::after {
+    width: 500px;
+    height: 500px;
+    background: rgba(13, 42, 42, 0.25);
+    bottom: -150px;
+    right: -150px;
+  }
+
+  .ambient-blob-3 {
+    position: fixed;
+    width: 400px;
+    height: 400px;
+    background: rgba(30, 10, 46, 0.25);
+    border-radius: 50%;
+    filter: blur(100px);
+    opacity: 0.06;
+    pointer-events: none;
+    z-index: 0;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  * {
+    position: relative;
+    z-index: 1;
   }
 }
 
 @layer components {
   .glass {
-    @apply bg-white/5 dark:bg-white/5 backdrop-blur-xl border border-white/10 shadow-[0_10px_40px_-20px_rgba(0,0,0,0.8)];
+    background: rgba(30, 30, 46, 0.6);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
+
   .glass-soft {
-    @apply bg-white/3 dark:bg-white/3 backdrop-blur-lg border border-white/10;
+    background: rgba(30, 30, 46, 0.4);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
   }
+  
+  /* Glass Hover Effect */
+  .glass:hover {
+    border-color: rgba(255, 255, 255, 0.16);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transform: translateY(-3px);
+    transition: all 0.25s ease;
+  }
+  
+  /* Glass Navbar */
+  .navbar-glass {
+    background: rgba(15, 23, 42, 0.8);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  /* Glass Card */
+  .glass-card {
+    background: rgba(30, 41, 59, 0.6);
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  }
+
+  .glass-card:hover {
+    border-color: rgba(255, 255, 255, 0.16);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    transform: translateY(-3px);
+    transition: all 0.25s ease;
+  }
+
+  /* Glass Featured */
+  .glass-featured {
+    background: rgba(30, 41, 59, 0.6);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  /* Glass Info Panel */
+  .glass-info-panel {
+    background: rgba(10, 10, 20, 0.7);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  /* Glass Arrow Button */
+  .glass-arrow {
+    background: rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .glass-arrow:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  /* Glass Heart Button */
+  .glass-heart {
+    background: rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /* Glass Time Pill */
+  .glass-time-pill {
+    background: rgba(34, 197, 94, 0.12);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.2);
+  }
+
+  /* Glass Input */
+  .glass-input {
+    background: rgba(30, 41, 59, 0.5);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  /* Glass Active Filter */
+  .glass-active-filter {
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  /* SELL Button with glow */
+  .sell-button-glow {
+    box-shadow: 0 0 18px rgba(245, 158, 11, 0.35);
+  }
+
+  /* ADMIN Button glass */
+  .admin-button-glass {
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  /* Nav Scroll Effect */
+  .nav-scrolled {
+    background-color: rgba(10, 14, 26, 0.88);
+    backdrop-filter: blur(28px);
+    border-bottom: 1px solid rgba(232, 192, 64, 0.15);
+    transition: all 0.3s ease;
+  }
+  
+  .nav-default {
+    background-color: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(16px);
+    border-bottom: none;
+    transition: all 0.3s ease;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
+/* Scroll Animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.8s ease-out forwards;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.8s ease-out forwards;
+}
+
+.animate-slide-down {
+  animation: slide-down 0.6s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.6s ease-out forwards;
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.8s ease-out forwards;
+}
+
+.animate-slide-in-up {
+  animation: slide-in-up 0.8s ease-out forwards;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.8s ease-out forwards;
+}
+
+/* Scroll-triggered animations with delay */
+.animate-fade-in-delayed {
+  animation: fade-in 0.8s ease-out 0.2s forwards;
+}
+
+.animate-fade-in-up-delayed {
+  animation: fade-in-up 0.8s ease-out 0.2s forwards;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Intersection Observer for scroll animations */
+.animate-on-scroll {
+  opacity: 0;
+  transition: all 0.8s ease-out;
+}
+
+.animate-on-scroll.visible {
+  opacity: 1;
+}
+
+.animate-on-scroll.slide-up {
+  transform: translateY(30px);
+}
+
+.animate-on-scroll.slide-up.visible {
+  transform: translateY(0);
+}
+
+.animate-on-scroll.slide-left {
+  transform: translateX(-30px);
+}
+
+.animate-on-scroll.slide-left.visible {
+  transform: translateX(0);
+}
+
+.animate-on-scroll.slide-right {
+  transform: translateX(30px);
+}
+
+.animate-on-scroll.slide-right.visible {
+  transform: translateX(0);
+}
+
+.animate-on-scroll.scale {
+  transform: scale(0.95);
+}
+
+.animate-on-scroll.scale.visible {
+  transform: scale(1);
+}
+
+/* Ripple Effect */
+@keyframes ripple {
+  0% {
+    width: 20px;
+    height: 20px;
+    opacity: 0.6;
+  }
+  100% {
+    width: 100px;
+    height: 100px;
+    opacity: 0;
+  }
+}
+
+/* Enhanced Hover Effects */
+.glass:hover .hover-glow {
+  opacity: 1;
+}
+
+/* Parallax Scroll Effect */
+.parallax-slow {
+  transition: transform 0.5s ease-out;
+}
+
+/* Floating Animation */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Pulse Effect */
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.8;
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Glow Pulse */
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+  50% {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 0 25px rgba(245, 158, 11, 0.2);
+  }
+}
+
+/* Staggered Animations */
+.animate-stagger-1 {
+  animation-delay: 0.1s;
+}
+
+.animate-stagger-2 {
+  animation-delay: 0.2s;
+}
+
+.animate-stagger-3 {
+  animation-delay: 0.3s;
+}
+
+/* Magnetic Effect */
+.magnetic {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Background Particles */
+@keyframes particles {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-100vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+.particle {
+  position: fixed;
+  pointer-events: none;
+  opacity: 0;
+  animation: particles 10s linear infinite;
 }

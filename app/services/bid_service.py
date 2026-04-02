@@ -15,7 +15,7 @@ async def place_bid(
     bidder_id: int,
     amount: Decimal,
     db: AsyncSession
-) -> Bid:
+) -> tuple[Bid, dict]:
     redis = await get_redis()
     lock_key = f'lock:auction:{auction_id}'
  
@@ -90,4 +90,11 @@ async def place_bid(
  
         await db.commit()
         await db.refresh(bid)
-        return bid
+        await db.refresh(auction)
+
+        time_extended = seconds_left < ANTI_SNIPE_WINDOW
+        return bid, {
+            'time_extended': time_extended,
+            'auction_end_time': auction.end_time,
+            'total_bids': auction.total_bids,
+        }

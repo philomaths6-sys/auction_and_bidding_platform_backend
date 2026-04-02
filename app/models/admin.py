@@ -23,7 +23,7 @@ class FraudFlag(Base):
 
     id         = Column(Integer, primary_key=True, autoincrement=True)
     user_id    = Column(Integer, ForeignKey('users.id'))
-    auction_id = Column(Integer, ForeignKey('auctions.id'))
+    auction_id = Column(Integer, ForeignKey('auctions.id', ondelete='CASCADE'))
     reason     = Column(Text)
     flagged_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -32,7 +32,7 @@ class Report(Base):
     __table_args__ = TABLE_ARGS
 
     id          = Column(Integer, primary_key=True, autoincrement=True)
-    auction_id  = Column(Integer, ForeignKey('auctions.id'))
+    auction_id  = Column(Integer, ForeignKey('auctions.id', ondelete='CASCADE'))
     reported_by = Column(Integer, ForeignKey('users.id'))
     reason      = Column(Text)
     status      = Column(String(20), default='open')  # open | reviewed | closed

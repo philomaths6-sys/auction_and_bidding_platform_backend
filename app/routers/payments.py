@@ -43,7 +43,19 @@ async def create_payment(
     db.add(payment)
     await db.commit()
     await db.refresh(payment)
-    return payment
+    auction = await db.get(Auction, payment.auction_id)
+    return PaymentResponse(
+        id=payment.id,
+        auction_id=payment.auction_id,
+        buyer_id=payment.buyer_id,
+        seller_id=payment.seller_id,
+        amount=payment.amount,
+        payment_status=payment.payment_status,
+        payment_method=payment.payment_method,
+        transaction_id=payment.transaction_id,
+        created_at=payment.created_at,
+        auction_title=auction.title if auction else None,
+    )
 
 
 # ─── SECTION: Payment History (NEW) ──────────────────────────────────────────
@@ -63,7 +75,27 @@ async def my_payments(
         ))
         .order_by(Payment.created_at.desc())
     )
-    return result.scalars().all()
+    payments = result.scalars().all()
+    if not payments:
+        return []
+    auction_ids = [p.auction_id for p in payments]
+    ar = await db.execute(select(Auction.id, Auction.title).where(Auction.id.in_(auction_ids)))
+    title_map = {row[0]: row[1] for row in ar.all()}
+    return [
+        PaymentResponse(
+            id=p.id,
+            auction_id=p.auction_id,
+            buyer_id=p.buyer_id,
+            seller_id=p.seller_id,
+            amount=p.amount,
+            payment_status=p.payment_status,
+            payment_method=p.payment_method,
+            transaction_id=p.transaction_id,
+            created_at=p.created_at,
+            auction_title=title_map.get(p.auction_id),
+        )
+        for p in payments
+    ]
 
 
 @router.get('/{payment_id}', response_model=PaymentResponse)
@@ -78,6 +110,18 @@ async def get_payment(
         raise HTTPException(404, 'Payment not found')
     if payment.buyer_id != current_user.id and payment.seller_id != current_user.id:
         raise HTTPException(403, 'Not authorised')
-    return payment
+    auction = await db.get(Auction, payment.auction_id)
+    return PaymentResponse(
+        id=payment.id,
+        auction_id=payment.auction_id,
+        buyer_id=payment.buyer_id,
+        seller_id=payment.seller_id,
+        amount=payment.amount,
+        payment_status=payment.payment_status,
+        payment_method=payment.payment_method,
+        transaction_id=payment.transaction_id,
+        created_at=payment.created_at,
+        auction_title=auction.title if auction else None,
+    )
 
 # ─── END SECTION: Payment History ────────────────────────────────────────────

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, Field
 from datetime import datetime
 from typing import Optional, List
 
@@ -17,11 +17,12 @@ class CommentResponse(BaseModel):
     comment_text: str
     parent_comment_id: Optional[int] = None
     created_at: datetime
-    replies: List['CommentResponse'] = []
+    replies: List['CommentResponse'] = Field(default_factory=list)
 
     model_config = {'from_attributes': True}
 
-CommentResponse.model_rebuild()  # required for self-referencing model
+
+CommentResponse.model_rebuild()
 
 
 # ─── Notification ──────────────────────────────────────────────────

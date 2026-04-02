@@ -41,6 +41,16 @@ async def list_categories(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
+@router.get('/admin/all', response_model=List[CategoryResponse])
+async def list_all_categories(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Admin only: list all categories including inactive ones."""
+    result = await db.execute(select(Category).order_by(Category.name))
+    return result.scalars().all()
+
+
 @router.get('/{category_id}', response_model=CategoryResponse)
 async def get_category(category_id: int, db: AsyncSession = Depends(get_db)):
     """Get a single category by ID."""
@@ -61,7 +71,23 @@ async def delete_category(
     if not category:
         raise HTTPException(404, 'Category not found')
         
+    await db.delete(category)
+    await db.commit()
+
+
+@router.post('/{category_id}/deactivate', status_code=200)
+async def deactivate_category(
+    category_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Admin only: deactivate a category (soft delete)."""
+    category = await db.get(Category, category_id)
+    if not category:
+        raise HTTPException(404, 'Category not found')
+        
     category.is_active = False
     await db.commit()
+    return {"message": "Category deactivated successfully"}
 
 # ─── END SECTION: Category CRUD ───────────────────────────────────────────────

@@ -18,6 +18,7 @@ class Category(Base):
     subcategories = relationship('Category', back_populates='parent')
     parent        = relationship('Category', back_populates='subcategories',
                                  remote_side='Category.id')
+    auctions      = relationship('Auction', back_populates='category', cascade='all, delete-orphan')
  
 class Auction(Base):
     __tablename__ = 'auctions'
@@ -27,7 +28,7 @@ class Auction(Base):
     title          = Column(String(255), nullable=False)
     description    = Column(Text)
     seller_id      = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
-    category_id    = Column(Integer, ForeignKey('categories.id'))
+    category_id    = Column(Integer, ForeignKey('categories.id', ondelete='SET NULL'))
     starting_price = Column(Numeric(12, 2), nullable=False)
     reserve_price  = Column(Numeric(12, 2))
     current_price  = Column(Numeric(12, 2), nullable=False)
@@ -41,6 +42,11 @@ class Auction(Base):
  
     seller     = relationship('User', back_populates='auctions')
     category   = relationship('Category')
+
+    @property
+    def seller_username(self) -> str | None:
+        u = self.seller
+        return u.username if u is not None else None
     images     = relationship('AuctionImage', back_populates='auction', lazy='selectin')
     attributes = relationship('AuctionAttribute', back_populates='auction', lazy='selectin')
     bids       = relationship('Bid', back_populates='auction')

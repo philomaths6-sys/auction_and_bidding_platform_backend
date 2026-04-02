@@ -1,10 +1,19 @@
 import axiosClient from './axiosClient';
 
 export const auctionService = {
+  getHomeFeed: async (featuredLimit = 3, latestLimit = 8) => {
+    const { data } = await axiosClient.get(`/auctions/home-feed?featured_limit=${featuredLimit}&latest_limit=${latestLimit}`);
+    return data;
+  },
+
   getAuctions: async (skip = 0, limit = 100, filters = {}) => {
     const params = new URLSearchParams({ skip, limit });
     if (filters.status) params.append('status', filters.status);
     if (filters.category_id) params.append('category_id', filters.category_id);
+    if (filters.category_ids) {
+      // If multiple category IDs are provided, send them as comma-separated
+      params.append('category_ids', filters.category_ids.join(','));
+    }
     if (filters.min_price) params.append('min_price', filters.min_price);
     if (filters.max_price) params.append('max_price', filters.max_price);
     const { data } = await axiosClient.get(`/auctions/?${params.toString()}`);

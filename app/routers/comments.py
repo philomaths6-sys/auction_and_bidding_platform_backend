@@ -45,10 +45,23 @@ async def post_comment(
 async def get_comments(auction_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Comment)
-        .where(Comment.auction_id == auction_id, Comment.parent_comment_id == None)
+        .where(Comment.auction_id == auction_id)
         .order_by(Comment.created_at.asc())
     )
-    return result.scalars().all()
+    comments = result.scalars().all()
+    
+    # Simple serialization without nested queries
+    return [
+        {
+            'id': c.id,
+            'auction_id': c.auction_id,
+            'user_id': c.user_id,
+            'comment_text': c.comment_text,
+            'parent_comment_id': c.parent_comment_id,
+            'created_at': c.created_at,
+        }
+        for c in comments
+    ]
 
 
 @router.delete('/{auction_id}/comments/{comment_id}', status_code=204)
@@ -61,7 +74,8 @@ async def delete_comment(
     comment = await db.get(Comment, comment_id)
     if not comment:
         raise HTTPException(status.HTTP_404_NOT_FOUND, 'Comment not found')
+    if comment.auction_id != auction_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, 'Comment not found')
     if comment.user_id != current_user.id and current_user.role != 'admin':
         raise HTTPException(status.HTTP_403_FORBIDDEN, 'Not authorized')
     await db.delete(comment)
-    await db.commit()

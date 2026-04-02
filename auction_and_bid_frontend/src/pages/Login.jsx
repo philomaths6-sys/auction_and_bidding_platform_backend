@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Gavel, Loader2, ArrowRight } from 'lucide-react';
+import { formatApiError } from '../utils/apiError';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -13,6 +14,12 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const handleResetPassword = () => {
+    // Clear only the password field
+    setPassword('');
+    setError(null);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -23,10 +30,16 @@ export default function Login() {
       const redirectTo = location.state?.from?.pathname || '/dashboard';
       navigate(redirectTo, { replace: true });
     } catch (err) {
-      if (err.response?.status === 403 || err.response?.data?.detail?.includes('suspended') || err.response?.data?.detail?.includes('banned')) {
+      const displayError = formatApiError(err, 'Invalid credentials');
+      const lowered = displayError.toLowerCase();
+      if (
+        err.response?.status === 403 ||
+        lowered.includes('suspended') ||
+        lowered.includes('banned')
+      ) {
         navigate('/suspended');
       } else {
-        setError(err.response?.data?.detail || 'Invalid credentials');
+        setError(displayError);
       }
     } finally {
       setIsLoading(false);
@@ -65,7 +78,7 @@ export default function Login() {
           <div>
             <div className="flex justify-between items-center mb-2">
               <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Secure Passcode</label>
-              <span className="text-xs font-bold text-amber-600 dark:text-amber-500 cursor-pointer hover:underline uppercase tracking-wide">Reset</span>
+              <span className="text-xs font-bold text-amber-600 dark:text-amber-500 cursor-pointer hover:underline uppercase tracking-wide" onClick={handleResetPassword}>Reset</span>
             </div>
             <input 
               type="password" 

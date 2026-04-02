@@ -1,6 +1,6 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 
 class ReportCreate(BaseModel):
@@ -17,6 +17,12 @@ class ReportResponse(BaseModel):
     created_at: datetime
 
     model_config = {'from_attributes': True}
+
+
+class ReportDetailResponse(ReportResponse):
+    """Report row for admin UI with joined user + auction labels."""
+    reporter_username: Optional[str] = None
+    auction_title: Optional[str] = None
 
 
 class FraudFlagResponse(BaseModel):
@@ -38,3 +44,7 @@ class AdminLogResponse(BaseModel):
     created_at: datetime
 
     model_config = {'from_attributes': True}
+
+
+class FeaturedAuctionsUpdateRequest(BaseModel):
+    auction_ids: List[int] = Field(default_factory=list, max_length=12)

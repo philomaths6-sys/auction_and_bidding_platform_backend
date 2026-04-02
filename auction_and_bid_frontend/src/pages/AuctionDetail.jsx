@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -9,12 +9,16 @@ import { watchlistService } from '../services/api/watchlistService';
 import axiosClient from '../services/api/axiosClient';
 import { Heart, Flag, ChevronRight, Eye, Users, Trophy, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { formatApiError } from '../utils/apiError';
+import { useAuctionBidSocket } from '../hooks/useAuctionBidSocket';
+import { useCategories } from '../context/CategoryContext';
+import { normalizeAuction } from '../services/api/adapters';
 
 export default function AuctionDetail() {
   const { id } = useParams();
   const { user } = useAuth();
   const { addToast } = useToast();
-  const ws = useRef(null);
+  const { categoryById } = useCategories();
 
   const [auction, setAuction] = useState(null);
   const [bids, setBids] = useState([]);
@@ -44,9 +48,37 @@ export default function AuctionDetail() {
   useEffect(() => {
     fetchData();
     if (user) checkWatchlistStatus();
-    setupWebSocket();
-    return () => { if (ws.current) ws.current.close(); };
   }, [id, user]);
+
+  const onBidSocketEvent = useCallback(
+    (data) => {
+      setAuction((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          current_price: data.current_price,
+          total_bids: data.total_bids ?? prev.total_bids,
+          end_time: data.new_end_time || prev.end_time,
+        };
+      });
+      if (data.time_extended) {
+        addToast('Time extended by 30 seconds — last-minute bid detected.', 'warning', 5000);
+      }
+      bidService.getBidsForAuction(id).then((newBids) => {
+        setBids(newBids);
+        const uid = user?.id;
+        if (uid && newBids.length > 0 && newBids[0].bidder_id !== uid) {
+          const wasBidding = newBids.some((b) => b.bidder_id === uid);
+          if (wasBidding) {
+            addToast(`You've been outbid — current price is $${data.current_price}`, 'error');
+          }
+        }
+      });
+    },
+    [id, user?.id, addToast]
+  );
+
+  useAuctionBidSocket(id, onBidSocketEvent, Boolean(id));
 
   useEffect(() => {
     if (!auction) return;
@@ -70,8 +102,14 @@ export default function AuctionDetail() {
     const m = Math.floor((diffMs % 3600000) / 60000);
     const s = Math.floor((diffMs % 60000) / 1000);
     
-    let text = `${h}h ${m}m ${s}s`;
-    if (h === 0) text = `${m}:${s.toString().padStart(2, '0')}`;
+    let text = '';
+    if (h > 0) {
+      text = `${h}h ${m}m ${s}s`;
+    } else if (m > 0) {
+      text = `${m}m ${s}s`;
+    } else {
+      text = `${s}s`;
+    }
     
     let warningLevel = 0;
     if (h === 0 && m < 10) warningLevel = 1;
@@ -107,36 +145,6 @@ export default function AuctionDetail() {
     } catch (e) {}
   };
 
-  const setupWebSocket = () => {
-    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
-    ws.current = new WebSocket(`${wsUrl}/auctions/ws/${id}`);
-    ws.current.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.event === 'bid_placed') {
-        setAuction(prev => ({ 
-          ...prev, 
-          current_price: data.current_price, 
-          total_bids: data.total_bids,
-          end_time: data.new_end_time || prev.end_time 
-        }));
-        
-        // Anti-snipe detection
-        if (data.time_extended) {
-          addToast("Time extended by 30 seconds — last-minute bid detected.", "warning", 5000);
-        }
-
-        bidService.getBidsForAuction(id).then(newBids => {
-          setBids(newBids);
-          // Outbid logic
-          if (user && newBids.length > 0 && newBids[0].bidder_id !== user.id) {
-            const hasBidPreviously = newBids.some(b => b.bidder_id === user.id);
-            if (hasBidPreviously) addToast(`You've been outbid — current price is $${data.current_price}`, 'error');
-          }
-        });
-      }
-    };
-  };
-
   const toggleWatchlist = async () => {
     if (!user) return addToast('Please login to use the watchlist.', 'error');
     try {
@@ -148,22 +156,30 @@ export default function AuctionDetail() {
   const handlePlaceBid = async (e) => {
     e.preventDefault();
     if (!user) return addToast('Log in to bid.', 'error');
+    if (!auction) return;
+    const attemptedBid = parseFloat(bidAmount, 10);
+    if (!Number.isFinite(attemptedBid)) {
+      return addToast('Enter a valid bid amount.', 'error');
+    }
     setBidLoading(true);
-    
-    // Optimistic UI update
     const prevPrice = auction.current_price;
-    const attemptedBid = parseFloat(bidAmount);
-    setAuction(prev => ({ ...prev, current_price: attemptedBid }));
+    setAuction((prev) => ({ ...prev, current_price: attemptedBid }));
 
     try {
       await bidService.placeBid(id, attemptedBid);
       setBidAmount('');
       addToast(`Bid of $${attemptedBid} placed successfully.`, 'success');
-    } catch (err) { 
-      setAuction(prev => ({ ...prev, current_price: prevPrice })); // Revert on failure
-      addToast(err.response?.data?.detail || 'Failed to place bid', 'error');
-    } finally { 
-      setBidLoading(false); 
+      const [freshAuction, newBids] = await Promise.all([
+        auctionService.getAuction(id),
+        bidService.getBidsForAuction(id),
+      ]);
+      setAuction(freshAuction);
+      setBids(newBids);
+    } catch (err) {
+      setAuction((prev) => ({ ...prev, current_price: prevPrice }));
+      addToast(formatApiError(err, 'Failed to place bid'), 'error');
+    } finally {
+      setBidLoading(false);
     }
   };
 
@@ -173,9 +189,12 @@ export default function AuctionDetail() {
     if (!commentText.trim()) return;
     try {
       const newComment = await commentService.postComment(id, { comment_text: commentText });
-      setComments([...comments, newComment]); setCommentText('');
+      setComments((prev) => [...prev, newComment]);
+      setCommentText('');
       addToast('Comment posted', 'success');
-    } catch (e) { addToast('Failed to post comment', 'error'); }
+    } catch (e) {
+      addToast(formatApiError(e, 'Failed to post comment'), 'error');
+    }
   };
 
   const submitReport = async (e) => {
@@ -198,42 +217,167 @@ export default function AuctionDetail() {
   const handleDeleteComment = async (commentId) => {
     try {
       await commentService.deleteComment(id, commentId);
-      setComments(prev => prev.filter(c => c.id !== commentId));
+      setComments((prev) => prev.filter(c => c.id !== commentId));
       addToast('Comment deleted', 'success');
     } catch (e) {
-      addToast('Failed to delete comment', 'error');
+      addToast(formatApiError(e, 'Failed to delete comment'), 'error');
     }
   };
 
   const [replyTo, setReplyTo] = useState(null);
   const [replyText, setReplyText] = useState('');
+  const [expandedReplies, setExpandedReplies] = useState(new Set());
 
   const handlePostReply = async (parentId) => {
     if (!replyText.trim()) return;
     try {
       const newComment = await commentService.postComment(id, { comment_text: replyText, parent_comment_id: parentId });
-      setComments(prev => [...prev, newComment]);
+      setComments((prev) => [...prev, newComment]);
       setReplyTo(null);
       setReplyText('');
+      // Auto-expand replies when a new reply is posted
+      setExpandedReplies(prev => new Set([...prev, parentId]));
       addToast('Reply posted', 'success');
     } catch (e) {
-      addToast('Failed to post reply', 'error');
+      addToast(formatApiError(e, 'Failed to post reply'), 'error');
     }
   };
 
-  if (loading) return <div className="p-20 text-center dark:text-white font-sans">Loading auction data...</div>;
-  if (!auction) return <div className="p-20 text-center dark:text-white font-sans">Auction not found</div>;
+  const toggleReplies = (commentId) => {
+    setExpandedReplies(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(commentId)) {
+        newSet.delete(commentId);
+      } else {
+        newSet.add(commentId);
+      }
+      return newSet;
+    });
+  };
+
+  if (loading) return <div className="p-20 text-center text-slate-100 font-sans">Loading auction data...</div>;
+  if (!auction) return <div className="p-20 text-center text-slate-100 font-sans">Auction not found</div>;
+
+  const renderCommentNode = (c, depth = 0) => {
+    const replies = comments.filter(reply => reply.parent_comment_id === c.id);
+    const hasReplies = replies.length > 0;
+    const isExpanded = expandedReplies.has(c.id);
+
+    return (
+      <div key={c.id} className={`${depth > 0 ? 'ml-12' : ''}`}>
+        <div className="flex gap-4 py-4">
+          <div className="w-10 h-10 rounded-full bg-slate-300 dark:bg-slate-700 flex items-center justify-center font-black text-white shrink-0 uppercase">
+            {c.user_id?.toString().slice(0, 2) || 'U'}
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-1">
+              <span className="font-bold text-slate-900 dark:text-white">User {c.user_id}</span>
+              <span className="text-xs text-slate-500">
+                {new Date(c.created_at).toLocaleString()}
+              </span>
+              {c.parent_comment_id && (
+                <span className="text-xs text-amber-600 dark:text-amber-400">
+                  Reply to comment #{c.parent_comment_id}
+                </span>
+              )}
+            </div>
+            <p className="text-slate-700 dark:text-slate-300 whitespace-pre-wrap mb-3">{c.comment_text}</p>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setReplyTo(c.id)}
+                className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 font-medium flex items-center gap-1"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                </svg>
+                Reply
+              </button>
+              {hasReplies && (
+                <button 
+                  onClick={() => toggleReplies(c.id)}
+                  className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 font-medium flex items-center gap-1"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={isExpanded ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"} />
+                  </svg>
+                  {isExpanded ? 'Hide' : 'Show'} {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
+                </button>
+              )}
+              {user && user.id === c.user_id && (
+                <button 
+                  onClick={() => handleDeleteComment(c.id)}
+                  className="text-xs text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 font-medium"
+                >
+                  Delete
+                </button>
+              )}
+            </div>
+            {replyTo === c.id && (
+              <div className="mt-3 flex gap-2">
+                <div className="w-8 h-8 rounded-full bg-slate-300 dark:bg-slate-700 flex items-center justify-center font-black text-white shrink-0 uppercase text-xs">
+                  {user?.id?.toString().slice(0, 2) || 'U'}
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    placeholder="Add a reply..."
+                    className="w-full glass-input border border-slate-200 dark:border-slate-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-amber-500 dark:text-white placeholder-slate-500 dark:placeholder-slate-400"
+                  />
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => handlePostReply(c.id)}
+                      className="text-xs bg-amber-500 hover:bg-amber-400 text-white font-medium px-3 py-1 rounded"
+                    >
+                      Reply
+                    </button>
+                    <button
+                      onClick={() => { setReplyTo(null); setReplyText(''); }}
+                      className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        {/* Render replies only if expanded */}
+        {hasReplies && isExpanded && (
+          <div className="ml-12">
+            {replies.map(reply => renderCommentNode(reply, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const displayAuction = normalizeAuction(auction, categoryById);
+  const categoryHref = displayAuction.category_name
+    ? `/auctions?category=${encodeURIComponent(displayAuction.category_name)}`
+    : '/auctions';
+  const categoryLabel = displayAuction.category_name || 'Browse';
 
   const isEnded = auction.auction_status === 'ended' || timeLeft.diff <= 0;
+  const isCancelled = auction.auction_status === 'cancelled';
   const isWinner = isEnded && bids.length > 0 && user && bids[0].bidder_id === user.id;
   const isSeller = user && auction.seller_id === user.id;
-  const isOutbid = !isWinner && !isSeller && !isEnded && bids.length > 0 && user && bids[0].bidder_id !== user.id && bids.some(b => b.bidder_id === user.id);
+  const isOutbid = !isWinner && !isSeller && !isEnded && !isCancelled && bids.length > 0 && user && bids[0].bidder_id !== user.id && bids.some(b => b.bidder_id === user.id);
   
   const allImages = auction.images || [];
   const primaryImgUrl = allImages[primaryImageIdx]?.image_url || 'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?auto=format&fit=crop&q=80&w=1200';
 
   return (
-    <div className="max-w-[1400px] mx-auto font-sans">
+    <div className="font-sans px-4 lg:px-6">
+      
+      {/* Cancelled Auction Banner */}
+      {isCancelled && (
+        <div className="w-full bg-red-600 text-white p-4 flex items-center justify-center shadow-lg mb-6">
+          <span className="font-bold text-lg">This auction has been cancelled</span>
+        </div>
+      )}
       
       {/* Winner Banner */}
       {isWinner && (
@@ -254,7 +398,9 @@ export default function AuctionDetail() {
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
             <Link to="/" className="hover:text-amber-500 transition-colors">Home</Link>
             <ChevronRight className="w-4 h-4" />
-            <Link to={`/?category_id=${auction.category_id}`} className="hover:text-amber-500 transition-colors">Category #{auction.category_id}</Link>
+            <Link to={categoryHref} className="hover:text-amber-500 transition-colors">
+              {categoryLabel}
+            </Link>
             <ChevronRight className="w-4 h-4" />
             <span className="text-slate-900 dark:text-white truncate max-w-[200px]">{auction.title}</span>
           </div>
@@ -263,7 +409,13 @@ export default function AuctionDetail() {
           <div>
             <h1 className="text-4xl lg:text-5xl font-black text-slate-900 dark:text-white tracking-tighter leading-tight">{auction.title}</h1>
             <p className="mt-4 font-bold text-slate-600 dark:text-slate-400">
-              Offered by <Link to={`/seller/${auction.seller_id}`} className="text-indigo-600 dark:text-indigo-400 hover:text-amber-500 dark:hover:text-amber-400 transition-colors cursor-pointer">{auction.seller_id}</Link>
+              Offered by{' '}
+              <Link
+                to={`/seller/${auction.seller_id}`}
+                className="text-indigo-600 dark:text-indigo-400 hover:text-amber-500 dark:hover:text-amber-400 transition-colors cursor-pointer"
+              >
+                @{auction.seller_username || `user${auction.seller_id}`}
+              </Link>
             </p>
           </div>
 
@@ -309,13 +461,13 @@ export default function AuctionDetail() {
 
               {/* BIDS TAB */}
               {activeTab === 'bids' && (
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden shadow-sm">
+                <div className="glass border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden shadow-sm">
                   {bids.length === 0 ? (
                     <div className="text-center py-16 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">No bids placed</div>
                   ) : (
                     <table className="w-full text-left border-collapse">
                       <thead>
-                        <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-xs font-black uppercase tracking-widest text-slate-500">
+                        <tr className="glass-soft border-b border-slate-200 dark:border-slate-800 text-xs font-black uppercase tracking-widest text-slate-500">
                           <th className="p-4 w-16">Rank</th>
                           <th className="p-4">Bidder</th>
                           <th className="p-4 text-right">Amount</th>
@@ -343,40 +495,17 @@ export default function AuctionDetail() {
               {activeTab === 'comments' && (
                 <div className="space-y-6">
                   {comments.length === 0 && <div className="text-center py-12 text-slate-500 italic">No comments yet.</div>}
-                  {comments.map(c => (
-                    <div key={c.id} className="flex gap-4 p-4 bg-slate-50 dark:bg-slate-900/30 rounded-lg border border-slate-100 dark:border-slate-800">
-                      <div className="w-10 h-10 rounded-full bg-slate-300 dark:bg-slate-700 flex items-center justify-center font-black text-white shrink-0 uppercase">
-                        U{c.user_id}
-                      </div>
-                      <div className="w-full">
-                        <div className="flex justify-between items-baseline mb-1">
-                          <span className="font-bold text-slate-900 dark:text-white">User #{c.user_id}</span>
-                          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{formatDistanceToNow(new Date(c.created_at))} ago</span>
-                        </div>
-                        <p className="text-slate-700 dark:text-slate-300 font-medium">{c.comment_text}</p>
-                        <div className="mt-3 flex gap-4 text-xs font-bold text-slate-400 uppercase tracking-widest">
-                          <button onClick={() => { setReplyTo(replyTo === c.id ? null : c.id); setReplyText(''); }} className="hover:text-amber-500 transition-colors cursor-pointer">{replyTo === c.id ? 'Cancel' : 'Reply'}</button>
-                          {user && user.id === c.user_id && <button onClick={() => handleDeleteComment(c.id)} className="hover:text-red-500 transition-colors cursor-pointer">Delete</button>}
-                        </div>
-                        {replyTo === c.id && (
-                          <div className="mt-3 flex gap-2">
-                            <input type="text" value={replyText} onChange={e => setReplyText(e.target.value)} placeholder="Write a reply..." className="flex-grow bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded px-3 py-2 text-sm font-medium focus:outline-none focus:border-amber-500 dark:text-white" />
-                            <button onClick={() => handlePostReply(c.id)} className="bg-amber-500 text-slate-900 font-black uppercase text-xs tracking-widest px-4 py-2 rounded">Send</button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                  {comments.filter(c => !c.parent_comment_id).map((c) => renderCommentNode(c))}
                   
                   {user ? (
                     <form onSubmit={handlePostComment} className="pt-6 border-t border-slate-200 dark:border-slate-800">
                       <div className="flex gap-3">
-                        <textarea rows="2" placeholder="Ask a question..." value={commentText} onChange={e=>setCommentText(e.target.value)} required className="flex-grow bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded p-4 font-medium focus:outline-none focus:border-amber-500 transition-colors resize-none"></textarea>
+                        <textarea rows="2" placeholder="Ask a question..." value={commentText} onChange={e=>setCommentText(e.target.value)} required className="flex-grow glass-input border border-slate-200 dark:border-slate-800 rounded p-4 font-medium focus:outline-none focus:border-amber-500 transition-colors resize-none"></textarea>
                         <button type="submit" className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black uppercase tracking-widest px-8 rounded hover:bg-amber-500 dark:hover:bg-amber-500 transition-colors">Post</button>
                       </div>
                     </form>
                   ) : (
-                    <div className="text-center py-6 font-bold text-slate-500 uppercase tracking-widest bg-slate-100 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 mt-6">Log in to post comments</div>
+                    <div className="text-center py-6 font-bold text-slate-500 uppercase tracking-widest glass-soft rounded-lg border border-slate-200 dark:border-slate-800 mt-6">Log in to post comments</div>
                   )}
                 </div>
               )}
@@ -385,7 +514,7 @@ export default function AuctionDetail() {
               {activeTab === 'attributes' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {auction.attributes?.length > 0 ? auction.attributes.map(a => (
-                    <div key={a.id} className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded flex justify-between">
+                    <div className="p-4 glass-soft border border-slate-200 dark:border-slate-800 rounded flex justify-between">
                       <span className="font-bold text-slate-500 uppercase tracking-widest text-xs">{a.attribute_name}</span>
                       <span className="font-bold text-slate-900 dark:text-white">{a.attribute_value}</span>
                     </div>
@@ -418,14 +547,15 @@ export default function AuctionDetail() {
             )}
 
             {/* Core Bid Block */}
-            <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-xl p-8 shadow-sm relative overflow-hidden">
+            <div className="glass border-2 border-slate-200 dark:border-slate-800 rounded-xl p-8 shadow-sm relative overflow-hidden">
               {/* Header Stats */}
               <div className="flex justify-between items-center mb-6">
                 <div className="text-slate-500 font-bold tracking-widest text-xs uppercase flex items-center gap-2">
                   <Users className="w-4 h-4" /> {auction.total_bids} Bids placed
                 </div>
                 <div className="text-slate-500 font-bold tracking-widest text-xs uppercase flex items-center gap-2 group cursor-help">
-                  <Eye className="w-4 h-4" /> 1,284 Views
+                  <Eye className="w-4 h-4" aria-hidden />
+                  {(Number(auction.total_views) || 0).toLocaleString()} views
                 </div>
               </div>
 
@@ -436,12 +566,7 @@ export default function AuctionDetail() {
               </div>
 
               {/* Countdown Tracker */}
-              <div className={`mb-8 p-6 rounded-lg flex items-center justify-between border-2 transition-colors duration-500 ${
-                isEnded ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700' :
-                timeLeft.warningLevel === 2 ? 'bg-red-50 border-red-500 dark:bg-red-950/20' :
-                timeLeft.warningLevel === 1 ? 'bg-amber-50 border-amber-500 dark:bg-amber-950/20' :
-                'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800'
-              }`}>
+              <div className="glass-soft mb-8 p-6 rounded-lg flex items-center justify-between border-2 transition-colors duration-500">
                 <div className="font-black uppercase tracking-widest text-sm text-slate-500 dark:text-slate-400">{isEnded ? 'Auction Ended' : 'Time Left'}</div>
                 <div 
                   aria-live="polite" 
@@ -457,7 +582,11 @@ export default function AuctionDetail() {
               </div>
 
               {/* Action Form */}
-              {isEnded ? (
+              {isCancelled ? (
+                <div className="w-full bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 font-black tracking-widest uppercase p-4 rounded text-center border-2 border-red-200 dark:border-red-800">
+                  Auction Cancelled
+                </div>
+              ) : isEnded ? (
                 <div className="w-full bg-slate-100 dark:bg-slate-800 text-slate-500 font-black tracking-widest uppercase p-4 rounded text-center">
                   Auction Closed
                 </div>
@@ -469,7 +598,7 @@ export default function AuctionDetail() {
                 <form onSubmit={handlePlaceBid} className="space-y-4">
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 font-mono text-xl font-bold text-slate-400">$</span>
-                    <input 
+                <input 
                       type="number" 
                       required 
                       disabled={bidLoading}
@@ -477,7 +606,7 @@ export default function AuctionDetail() {
                       placeholder={`Min bid: ${(parseFloat(auction.current_price) + 1).toLocaleString()}`}
                       value={bidAmount}
                       onChange={e => setBidAmount(e.target.value)}
-                      className="w-full font-mono text-2xl font-black bg-slate-50 dark:bg-slate-950 border-2 border-slate-200 dark:border-slate-800 rounded-lg py-4 pl-10 pr-4 focus:outline-none focus:border-amber-500 text-slate-900 dark:text-white transition-colors"
+                      className="w-full glass-input font-mono text-2xl font-black border-2 border-slate-200 dark:border-slate-800 rounded-lg py-4 pl-10 pr-4 focus:outline-none focus:border-amber-500 text-slate-900 dark:text-white transition-colors"
                     />
                   </div>
                   <button 
@@ -519,7 +648,7 @@ export default function AuctionDetail() {
       {/* Report Modal */}
       {showReportModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setShowReportModal(false)}>
-          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-xl p-8 shadow-2xl animate-in zoom-in-95 duration-200 border border-slate-200 dark:border-slate-800" onClick={e => e.stopPropagation()}>
+          <div className="glass border border-slate-200 dark:border-slate-800 w-full max-w-md rounded-xl p-8 shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
             <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight mb-2 flex items-center gap-2">
               <Flag className="w-5 h-5 text-red-500" /> Report Auction
             </h3>
@@ -528,7 +657,7 @@ export default function AuctionDetail() {
             <form onSubmit={submitReport} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Primary Reason</label>
-                <select value={reportReason} onChange={e=>setReportReason(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-3 font-medium focus:border-red-500 focus:outline-none transition-colors dark:text-white">
+                <select value={reportReason} onChange={e=>setReportReason(e.target.value)} className="w-full glass-input border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-3 font-medium focus:border-red-500 focus:outline-none transition-colors dark:text-white">
                   <option>Counterfeit</option>
                   <option>Prohibited item</option>
                   <option>Fraudulent listing</option>
@@ -538,7 +667,7 @@ export default function AuctionDetail() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Additional Details</label>
-                <textarea required rows="4" value={reportText} onChange={e=>setReportText(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-3 font-medium focus:border-red-500 focus:outline-none transition-colors dark:text-white resize-none" placeholder="Please provide evidence or context..."></textarea>
+                <textarea required rows="4" value={reportText} onChange={e=>setReportText(e.target.value)} className="w-full glass-input border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-3 font-medium focus:border-red-500 focus:outline-none transition-colors dark:text-white resize-none" placeholder="Please provide evidence or context..."></textarea>
               </div>
               <div className="flex justify-end gap-3 pt-4">
                 <button type="button" onClick={() => setShowReportModal(false)} className="px-6 py-2.5 rounded-lg font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors uppercase tracking-widest text-sm">Cancel</button>

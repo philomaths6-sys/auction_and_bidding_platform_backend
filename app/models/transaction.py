@@ -10,18 +10,20 @@ class AuctionWinner(Base):
     __table_args__ = TABLE_ARGS
  
     id             = Column(Integer, primary_key=True, autoincrement=True)
-    auction_id     = Column(Integer, ForeignKey('auctions.id'), unique=True)
+    auction_id     = Column(Integer, ForeignKey('auctions.id', ondelete='CASCADE'), unique=True)
     winner_user_id = Column(Integer, ForeignKey('users.id'))
     winning_bid_id = Column(Integer, ForeignKey('bids.id'))
     winning_amount = Column(Numeric(12, 2))
     won_at         = Column(DateTime(timezone=True), server_default=func.now())
+    
+    auction        = relationship('Auction')
  
 class Payment(Base):
     __tablename__ = 'payments'
     __table_args__ = TABLE_ARGS
  
     id             = Column(Integer, primary_key=True, autoincrement=True)
-    auction_id     = Column(Integer, ForeignKey('auctions.id'), unique=True)
+    auction_id     = Column(Integer, ForeignKey('auctions.id', ondelete='CASCADE'), unique=True)
     buyer_id       = Column(Integer, ForeignKey('users.id'))
     seller_id      = Column(Integer, ForeignKey('users.id'))
     amount         = Column(Numeric(12, 2), nullable=False)

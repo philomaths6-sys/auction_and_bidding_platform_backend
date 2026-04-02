@@ -1,11 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { watchlistService } from '../services/api/watchlistService';
 import { bidService } from '../services/api/bidService';
-import { Bookmark, Loader2, ArrowUpRight, TrendingUp, Search, X } from 'lucide-react';
+import { auctionService } from '../services/api/auctionService';
+import { Bookmark, Loader2, ArrowUpRight, TrendingUp, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { Link } from 'react-router-dom';
 import { normalizeAuction } from '../services/api/adapters';
 import { useCategories } from '../context/CategoryContext';
+import { formatApiError } from '../utils/apiError';
+import { useWs } from '../context/WsContext';
+import { connectAuctionBidSocket } from '../services/realtime/auctionBidSocket';
 
 export default function Watchlist() {
   const { categoryById } = useCategories();
@@ -14,19 +18,26 @@ export default function Watchlist() {
   const [sortBy, setSortBy] = useState('ending_soonest');
   const [quickBidModal, setQuickBidModal] = useState(null); // holds auction object
   const [quickBidAmount, setQuickBidAmount] = useState('');
+  const quickBidModalRef = useRef(null);
+  quickBidModalRef.current = quickBidModal;
   const { addToast } = useToast();
-  
-  // Track Websockets
-  const wsRefs = useRef({});
-  // Track price changes for amber ring animation
+  const { notifyWsOpen, notifyWsClose } = useWs();
+
   const [priceChangedIds, setPriceChangedIds] = useState(new Set());
+
+  const watchlistIdKey = useMemo(
+    () =>
+      [...auctions.map((a) => a.id)]
+        .sort((a, b) => a - b)
+        .join(','),
+    [auctions]
+  );
 
   const fetchWatchlist = async () => {
     try {
       const data = await watchlistService.getWatchlist();
       const normalized = (data || []).map((a) => normalizeAuction(a, categoryById));
       setAuctions(normalized);
-      setupWebSockets(normalized);
     } catch (e) {
       console.error(e);
       addToast('Failed to load watchlist', 'error');
@@ -37,50 +48,54 @@ export default function Watchlist() {
 
   useEffect(() => {
     fetchWatchlist();
-    return () => {
-      // Cleanup all websockets
-      Object.values(wsRefs.current).forEach(ws => ws.close());
-    };
   }, []);
 
-  const setupWebSockets = (watchlistData) => {
-    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
-    
-    watchlistData.forEach(auction => {
-      if (!wsRefs.current[auction.id]) {
-        const ws = new WebSocket(`${wsUrl}/auctions/ws/${auction.id}`);
-        ws.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-          if (data.event === 'bid_placed') {
-            setAuctions(prev => prev.map(a => {
-              if (a.id === auction.id && a.current_price !== data.current_price) {
-                // Trigger amber ring
-                setPriceChangedIds(prevIds => new Set([...prevIds, a.id]));
+  useEffect(() => {
+    if (!watchlistIdKey) return undefined;
+    const ids = watchlistIdKey.split(',').map(Number).filter(Boolean);
+    const sockets = ids.map((aid) =>
+      connectAuctionBidSocket(
+        aid,
+        (data) => {
+          setAuctions((prev) =>
+            prev.map((a) => {
+              if (a.id !== aid) return a;
+              const nextPrice = data.current_price;
+              if (Number(a.current_price) !== Number(nextPrice)) {
+                setPriceChangedIds((prevIds) => new Set([...prevIds, a.id]));
                 setTimeout(() => {
-                  setPriceChangedIds(prevIds => {
+                  setPriceChangedIds((prevIds) => {
                     const next = new Set(prevIds);
                     next.delete(a.id);
                     return next;
                   });
                 }, 3000);
-                
-                // Update Quick Bid Modal if open
-                if (quickBidModal?.id === a.id) {
-                  const nextMin = Number(data.current_price) + 1;
-                  setQuickBidModal(prevModal => ({ ...prevModal, current_price: Number(data.current_price) }));
-                  setQuickBidAmount(String(nextMin));
-                }
-
-                return { ...a, current_price: data.current_price, total_bids: data.total_bids };
               }
-              return a;
-            }));
+              return {
+                ...a,
+                current_price: nextPrice,
+                total_bids: data.total_bids ?? a.total_bids,
+                end_time: data.new_end_time || a.end_time,
+              };
+            })
+          );
+          const modal = quickBidModalRef.current;
+          if (modal && modal.id === aid) {
+            const cp = Number(data.current_price);
+            setQuickBidModal({
+              ...modal,
+              current_price: cp,
+              total_bids: data.total_bids ?? modal.total_bids,
+              end_time: data.new_end_time || modal.end_time,
+            });
+            setQuickBidAmount(String(cp + 1));
           }
-        };
-        wsRefs.current[auction.id] = ws;
-      }
-    });
-  };
+        },
+        { notifyWsOpen, notifyWsClose }
+      )
+    );
+    return () => sockets.forEach((s) => s.disconnect());
+  }, [watchlistIdKey, notifyWsOpen, notifyWsClose]);
 
   const removeFromWatchlist = async (id) => {
     try {
@@ -98,12 +113,17 @@ export default function Watchlist() {
 
   const handleQuickBid = async (e, amount) => {
     e.preventDefault();
+    const modal = quickBidModal;
+    if (!modal) return;
     try {
-      await bidService.placeBid(quickBidModal.id, amount);
-      addToast(`Bid of $${amount} placed on ${quickBidModal.title}`, 'success');
-      setQuickBidModal(null);
+      await bidService.placeBid(modal.id, amount);
+      addToast(`Bid of $${amount} placed on ${modal.title}`, 'success');
+      const fresh = await auctionService.getAuction(modal.id);
+      const normalized = normalizeAuction(fresh, categoryById);
+      setAuctions((prev) => prev.map((a) => (a.id === modal.id ? normalized : a)));
+      setQuickBidModal((m) => (m?.id === modal.id ? null : m));
     } catch (e) {
-      addToast(e.response?.data?.detail || 'Failed to place bid', 'error');
+      addToast(formatApiError(e, 'Failed to place bid'), 'error');
     }
   };
 
@@ -114,7 +134,7 @@ export default function Watchlist() {
   if (sortBy === 'recently_added') sortedAuctions.sort((a,b) => new Date(b.start_time) - new Date(a.start_time));
 
   return (
-    <div className="max-w-[1400px] mx-auto py-8 font-sans">
+    <div className="py-8 font-sans px-4 lg:px-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
         <div>
           <h1 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight flex items-center gap-3">

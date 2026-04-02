@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import { UserPlus, Loader2, ArrowRight } from 'lucide-react';
+import { formatApiError } from '../utils/apiError';
 
 export default function Register() {
   const [formData, setFormData] = useState({
@@ -51,7 +52,7 @@ export default function Register() {
       await register(formData);
       navigate('/login', { state: { banner: 'Account created — please verify your email' } });
     } catch (err) {
-      setError(err.response?.data?.detail?.[0]?.msg || err.response?.data?.detail || 'Registration failed');
+      setError(formatApiError(err, 'Registration failed'));
     } finally {
       setIsLoading(false);
     }

@@ -24,8 +24,8 @@ class BidHistory(Base):
     __table_args__ = TABLE_ARGS
  
     id             = Column(Integer, primary_key=True, autoincrement=True)
-    auction_id     = Column(Integer, ForeignKey('auctions.id'))
-    bid_id         = Column(Integer, ForeignKey('bids.id'))
+    auction_id     = Column(Integer, ForeignKey('auctions.id', ondelete='CASCADE'))
+    bid_id         = Column(Integer, ForeignKey('bids.id', ondelete='CASCADE'))
     previous_price = Column(Numeric(12, 2))
     new_price      = Column(Numeric(12, 2))
     timestamp      = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -35,7 +35,7 @@ class AuctionExtension(Base):
     __table_args__ = TABLE_ARGS
  
     id               = Column(Integer, primary_key=True, autoincrement=True)
-    auction_id       = Column(Integer, ForeignKey('auctions.id'))
+    auction_id       = Column(Integer, ForeignKey('auctions.id', ondelete='CASCADE'))
     extended_seconds = Column(Integer, nullable=False)
     triggered_by_bid = Column(Integer, ForeignKey('bids.id'), nullable=True)
     created_at       = Column(DateTime(timezone=True), server_default=func.now())

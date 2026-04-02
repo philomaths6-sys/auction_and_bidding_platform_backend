@@ -19,6 +19,7 @@ class PaymentResponse(BaseModel):
     payment_method: Optional[str] = None
     transaction_id: Optional[str] = None
     created_at: datetime
+    auction_title: Optional[str] = None
 
     model_config = {'from_attributes': True}
 

@@ -19,5 +19,10 @@ export const bidService = {
   getMyBids: async () => {
     const { data } = await axiosClient.get('/auctions/my-bids');
     return data;
+  },
+
+  getMyWins: async () => {
+    const { data } = await axiosClient.get('/auctions/my-wins');
+    return data;
   }
 };

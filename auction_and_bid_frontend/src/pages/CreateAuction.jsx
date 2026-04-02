@@ -6,6 +6,13 @@ import { auctionService } from '../services/api/auctionService';
 import { CheckCircle2, ChevronRight, Image as ImageIcon, Plus, X, UploadCloud, Info, Bold, Italic, List, ChevronLeft } from 'lucide-react';
 import AuctionCard from '../components/AuctionCard';
 import { useCategories } from '../context/CategoryContext';
+import { formatApiError } from '../utils/apiError';
+
+function parseLocalDateTime(value) {
+  if (value == null || value === '') return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
 
 export default function CreateAuction() {
   const { user } = useAuth();
@@ -29,9 +36,9 @@ export default function CreateAuction() {
   const [attrValGroup, setAttrValGroup] = useState('');
 
   useEffect(() => {
-    // Set default end_time to +7 days
+    // Set default end_time to +3 hours
     const d = new Date();
-    d.setDate(d.getDate() + 7);
+    d.setHours(d.getHours() + 3);
     setFormData(prev => ({ ...prev, end_time: d.toISOString().slice(0, 16) }));
   }, [user, navigate]);
 
@@ -84,24 +91,72 @@ export default function CreateAuction() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (step !== 4) return handleNext();
-    
-    setSubmitting(true);
-    try {
-      const end = new Date(formData.end_time);
-      if (end <= new Date()) {
-        addToast('End time must be in the future', 'error');
-        setSubmitting(false);
+
+    const title = formData.title.trim();
+    const description = formData.description.trim();
+    const categoryId = parseInt(formData.category_id, 10);
+    const starting = parseFloat(formData.starting_price);
+    const end = parseLocalDateTime(formData.end_time);
+
+    if (!title) {
+      addToast('Please enter an auction title.', 'error');
+      return;
+    }
+    if (title.length > 255) {
+      addToast('Title must be at most 255 characters.', 'error');
+      return;
+    }
+    if (!Number.isFinite(categoryId) || categoryId < 1) {
+      addToast('Please select a parent category and subcategory.', 'error');
+      return;
+    }
+    if (!description) {
+      addToast('Please enter a description.', 'error');
+      return;
+    }
+    if (!Number.isFinite(starting) || starting < 1) {
+      addToast('Starting price must be at least $1.', 'error');
+      return;
+    }
+    if (!end) {
+      addToast('Please choose a valid auction end date and time.', 'error');
+      return;
+    }
+    if (end <= new Date()) {
+      addToast('End time must be in the future.', 'error');
+      return;
+    }
+
+    // Validate images
+    if (!formData.images || formData.images.length === 0) {
+      addToast('Please add at least one image.', 'error');
+      return;
+    }
+
+    let reserve = null;
+    if (formData.reserve_price !== '' && formData.reserve_price != null) {
+      reserve = parseFloat(formData.reserve_price);
+      if (!Number.isFinite(reserve) || reserve < 0) {
+        addToast('Reserve price must be a valid number (0 or greater).', 'error');
         return;
       }
+      if (reserve > 0 && reserve < starting) {
+        addToast('Reserve price cannot be less than the starting price.', 'error');
+        return;
+      }
+    }
+
+    setSubmitting(true);
+    try {
       const payload = {
-        title: formData.title,
-        description: formData.description,
-        starting_price: parseFloat(formData.starting_price),
-        end_time: new Date(formData.end_time).toISOString(),
-        category_id: parseInt(formData.category_id),
+        title,
+        description,
+        starting_price: starting,
+        end_time: end.toISOString(),
+        category_id: categoryId,
       };
-      if (formData.reserve_price) {
-        payload.reserve_price = parseFloat(formData.reserve_price);
+      if (reserve != null && Number.isFinite(reserve)) {
+        payload.reserve_price = reserve;
       }
 
       const newAuction = await auctionService.createAuction(payload);
@@ -127,7 +182,7 @@ export default function CreateAuction() {
       addToast('Auction created successfully!', 'success');
       navigate(`/auctions/${newAuction.id}`);
     } catch (err) {
-      addToast(err.response?.data?.detail || 'Failed to create auction', 'error');
+      addToast(formatApiError(err, 'Failed to create auction'), 'error');
     } finally {
       setSubmitting(false);
     }
@@ -140,21 +195,35 @@ export default function CreateAuction() {
     { num: 4, label: "Attributes" }
   ];
 
+  const previewEndIso = (() => {
+    const d = parseLocalDateTime(formData.end_time);
+    return d ? d.toISOString() : new Date().toISOString();
+  })();
+
   // Live Preview Object mapped to standard AuctionCard format
+  const previewCat = availableSubcategories.find((c) => c.id === Number(formData.category_id));
   const mockPreviewObj = {
     id: 9999,
     title: formData.title || 'Untitled Auction',
     description: formData.description || 'Description will appear here.',
-    current_price: parseFloat(formData.starting_price) || 0,
-    category_id: parseInt(formData.category_id) || null,
-    end_time: formData.end_time ? new Date(formData.end_time).toISOString() : new Date().toISOString(),
+    current_price: Number.isFinite(parseFloat(formData.starting_price))
+      ? parseFloat(formData.starting_price)
+      : 0,
+    category_id: Number.isFinite(parseInt(formData.category_id, 10))
+      ? parseInt(formData.category_id, 10)
+      : null,
+    category_name: previewCat?.name || null,
+    seller_id: user?.id ?? 0,
+    seller_username: user?.username || null,
+    end_time: previewEndIso,
     images: formData.images.map(img => ({ image_url: img.url, is_primary: img.is_primary })),
     total_bids: 0,
+    total_views: 0,
     auction_status: 'active'
   };
 
   return (
-    <div className="max-w-[1400px] mx-auto py-8 font-sans">
+    <div className="py-8 font-sans px-4 lg:px-6">
       <div className="mb-8">
         <h1 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight mb-6">Create Listing</h1>
         
@@ -179,7 +248,7 @@ export default function CreateAuction() {
       <div className="flex flex-col lg:flex-row gap-12">
         {/* LEFT PANEL - FORM STEPS */}
         <div className="lg:w-1/2">
-          <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-8 shadow-sm">
+          <form onSubmit={handleSubmit} className="glass border border-slate-200 dark:border-slate-800 rounded-xl p-8 shadow-sm">
             
             {/* STEP 1: BASIC INFO */}
             <div className={`space-y-6 animate-in slide-in-from-right-4 duration-300 ${step !== 1 && 'hidden'}`}>
@@ -188,7 +257,7 @@ export default function CreateAuction() {
                   <span>Auction Title</span>
                   <span className={formData.title.length > 255 ? 'text-red-500' : ''}>{formData.title.length}/255</span>
                 </label>
-                <input type="text" required={step===1} maxLength={255} value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-3 font-semibold text-lg focus:outline-none focus:border-amber-500 text-slate-900 dark:text-white transition-colors" placeholder="e.g. 1969 Ford Mustang Boss 429" />
+                <input type="text" required={step===1} maxLength={255} value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full glass-input border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-3 font-semibold text-lg focus:outline-none focus:border-amber-500 text-slate-900 dark:text-white transition-colors" placeholder="e.g. 1969 Ford Mustang Boss 429" />
               </div>
 
               <div>
@@ -196,7 +265,7 @@ export default function CreateAuction() {
                 <select required={step===1} value={parentCategoryId} onChange={e => {
                   setParentCategoryId(e.target.value);
                   setFormData({...formData, category_id: ''});
-                }} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-3 font-bold focus:outline-none focus:border-amber-500 transition-colors">
+                }} className="w-full glass-input border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-3 font-bold focus:outline-none focus:border-amber-500 transition-colors">
                   <option value="">Select parent category...</option>
                   {safeRoots.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
@@ -204,7 +273,7 @@ export default function CreateAuction() {
 
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Subcategory</label>
-                <select required={step===1} value={formData.category_id} onChange={e=>setFormData({...formData, category_id: e.target.value})} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-3 font-bold focus:outline-none focus:border-amber-500 transition-colors">
+                <select required={step===1} value={formData.category_id} onChange={e=>setFormData({...formData, category_id: e.target.value})} className="w-full glass-input border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-3 font-bold focus:outline-none focus:border-amber-500 transition-colors">
                   <option value="">Select subcategory...</option>
                   {availableSubcategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
@@ -212,13 +281,13 @@ export default function CreateAuction() {
 
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Detailed Description</label>
-                <div className="border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden flex flex-col focus-within:border-amber-500 transition-colors">
-                  <div className="bg-slate-100 dark:bg-slate-950/50 p-2 flex gap-2 border-b border-slate-200 dark:border-slate-800">
+                <div className="glass border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden flex flex-col focus-within:border-amber-500 transition-colors">
+                  <div className="glass-soft p-2 flex gap-2 border-b border-slate-200 dark:border-slate-800">
                     <button type="button" className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition-colors text-slate-500"><Bold className="w-4 h-4" /></button>
                     <button type="button" className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition-colors text-slate-500"><Italic className="w-4 h-4" /></button>
                     <button type="button" className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition-colors text-slate-500"><List className="w-4 h-4" /></button>
                   </div>
-                  <textarea required={step===1} rows="6" value={formData.description} onChange={e=>setFormData({...formData, description: e.target.value})} className="w-full bg-slate-50 dark:bg-slate-950 px-4 py-3 font-medium focus:outline-none resize-y" placeholder="Detail the condition, history, and modifications..."></textarea>
+                  <textarea required={step===1} rows="6" value={formData.description} onChange={e=>setFormData({...formData, description: e.target.value})} className="w-full glass-input px-4 py-3 font-medium focus:outline-none resize-y" placeholder="Detail the condition, history, and modifications..."></textarea>
                 </div>
               </div>
             </div>
@@ -230,7 +299,7 @@ export default function CreateAuction() {
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Starting Price</label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 font-mono font-bold text-slate-400">$</span>
-                    <input type="number" required={step===2} min="1" value={formData.starting_price} onChange={e=>setFormData({...formData, starting_price: e.target.value})} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg pl-8 pr-4 py-3 font-mono font-black text-xl focus:outline-none focus:border-amber-500 transition-colors" placeholder="0.00" />
+                    <input type="number" required={step===2} min="1" value={formData.starting_price} onChange={e=>setFormData({...formData, starting_price: e.target.value})} className="w-full glass-input border border-slate-200 dark:border-slate-800 rounded-lg pl-8 pr-4 py-3 font-mono font-black text-xl focus:outline-none focus:border-amber-500 transition-colors" placeholder="0.00" />
                   </div>
                 </div>
                 <div>
@@ -239,27 +308,27 @@ export default function CreateAuction() {
                   </label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 font-mono font-bold text-slate-400">$</span>
-                    <input type="number" min="0" value={formData.reserve_price} onChange={e=>setFormData({...formData, reserve_price: e.target.value})} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg pl-8 pr-4 py-3 font-mono text-xl focus:outline-none focus:border-amber-500 transition-colors" placeholder="Optional" />
+                    <input type="number" min="0" value={formData.reserve_price} onChange={e=>setFormData({...formData, reserve_price: e.target.value})} className="w-full glass-input border border-slate-200 dark:border-slate-800 rounded-lg pl-8 pr-4 py-3 font-mono text-xl focus:outline-none focus:border-amber-500 transition-colors" placeholder="Optional" />
                   </div>
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Auction End Time</label>
-                <input type="datetime-local" required={step===2} value={formData.end_time} onChange={e=>setFormData({...formData, end_time: e.target.value})} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-3 font-mono font-bold focus:outline-none focus:border-amber-500 transition-colors" />
-                <p className="mt-2 text-xs font-bold text-amber-600 dark:text-amber-500 flex items-center gap-1"><Info className="w-3 h-3" /> Ensure date is at least 3 days into the future.</p>
+                <input type="datetime-local" required={step===2} value={formData.end_time} onChange={e=>setFormData({...formData, end_time: e.target.value})} className="w-full glass-input border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-3 font-mono font-bold focus:outline-none focus:border-amber-500 transition-colors" />
+                <p className="mt-2 text-xs font-bold text-amber-600 dark:text-amber-500 flex items-center gap-1"><Info className="w-3 h-3" /> Ensure end time is at least 2-3 hours into the future.</p>
               </div>
             </div>
 
             {/* STEP 3: IMAGES */}
             <div className={`space-y-6 animate-in slide-in-from-right-4 duration-300 ${step !== 3 && 'hidden'}`}>
-              <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-8 text-center bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-900/80 transition-colors">
+              <div className="glass border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-8 text-center hover:bg-slate-100 dark:hover:bg-slate-900/80 transition-colors">
                 <UploadCloud className="w-12 h-12 text-slate-400 mx-auto mb-4" />
                 <p className="text-slate-900 dark:text-white font-black uppercase tracking-tight mb-2">Drag & Drop Image URLs (Simulated)</p>
                 <p className="text-slate-500 font-medium text-sm max-w-[250px] mx-auto">Upload via URL string format. First linked image acts as primary cover.</p>
                 
                 <div className="flex gap-2 mt-6 max-w-sm mx-auto">
-                  <input type="url" value={imageUrlInput} onChange={e=>setImageUrlInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addImageUrl())} placeholder="https://example.com/img.jpg" className="flex-grow bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded px-3 text-sm focus:outline-none focus:border-amber-500" />
+                  <input type="url" value={imageUrlInput} onChange={e=>setImageUrlInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addImageUrl())} placeholder="https://example.com/img.jpg" className="flex-grow glass-input border border-slate-200 dark:border-slate-800 rounded px-3 text-sm focus:outline-none focus:border-amber-500" />
                   <button type="button" onClick={addImageUrl} className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-2 font-black uppercase tracking-widest text-xs rounded transition-transform hover:scale-105">Add</button>
                 </div>
               </div>
@@ -285,14 +354,14 @@ export default function CreateAuction() {
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest mb-4 border-b border-slate-100 dark:border-slate-800 pb-2">Dynamic Specs Grid</h3>
                 <div className="flex flex-col sm:flex-row gap-3 mb-6">
-                  <input type="text" value={attrNameGroup} onChange={e=>setAttrNameGroup(e.target.value)} placeholder="Spec Name (e.g. Engine)" className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded px-4 py-2 text-sm font-bold focus:outline-none focus:border-amber-500" />
-                  <input type="text" value={attrValGroup} onChange={e=>setAttrValGroup(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addAttribute())} placeholder="Value (e.g. 5.0L V8)" className="flex-[2] bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded px-4 py-2 text-sm font-medium focus:outline-none focus:border-amber-500" />
+                  <input type="text" value={attrNameGroup} onChange={e=>setAttrNameGroup(e.target.value)} placeholder="Spec Name (e.g. Engine)" className="flex-1 glass-input border border-slate-200 dark:border-slate-800 rounded px-4 py-2 text-sm font-bold focus:outline-none focus:border-amber-500" />
+                  <input type="text" value={attrValGroup} onChange={e=>setAttrValGroup(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addAttribute())} placeholder="Value (e.g. 5.0L V8)" className="flex-[2] glass-input border border-slate-200 dark:border-slate-800 rounded px-4 py-2 text-sm font-medium focus:outline-none focus:border-amber-500" />
                   <button type="button" onClick={addAttribute} className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-500 p-2 rounded hover:bg-amber-500 hover:text-white transition-colors"><Plus className="w-5 h-5"/></button>
                 </div>
 
                 <div className="space-y-2">
                   {formData.attributes.map((attr, idx) => (
-                    <div key={idx} className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded">
+                    <div key={idx} className="flex justify-between items-center p-3 glass-soft border border-slate-200 dark:border-slate-800 rounded">
                       <div>
                         <span className="text-xs font-black uppercase tracking-widest text-slate-500 mr-4 w-24 inline-block">{attr.attribute_name}</span>
                         <span className="font-bold text-slate-900 dark:text-white">{attr.attribute_value}</span>
@@ -317,7 +386,7 @@ export default function CreateAuction() {
               </button>
               
               <button 
-                type={step === 4 ? "submit" : "button"} 
+                type="button" 
                 onClick={step === 4 ? handleSubmit : handleNext}
                 disabled={submitting}
                 className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-900 px-8 py-3 rounded-lg font-black uppercase tracking-widest text-sm transition-transform hover:scale-105 disabled:opacity-50 shadow-lg shadow-amber-500/20"
@@ -330,7 +399,7 @@ export default function CreateAuction() {
 
         {/* RIGHT PANEL - LIVE PREVIEW */}
         <div className="hidden lg:block lg:w-1/2">
-          <div className="sticky top-24 bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-800 rounded-xl p-8 h-full min-h-[600px]">
+          <div className="sticky top-24 glass border border-slate-200 dark:border-slate-800 rounded-xl p-8 h-full min-h-[600px]">
             <div className="flex items-center gap-2 text-slate-400 mb-6 font-black uppercase tracking-widest text-xs border-b border-slate-200 dark:border-slate-800 pb-4">
               <ImageIcon className="w-4 h-4" /> Live Card Preview
             </div>

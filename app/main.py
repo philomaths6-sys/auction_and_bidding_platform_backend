@@ -19,8 +19,8 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(users.router)
-app.include_router(auctions.router)
 app.include_router(bids.router)
+app.include_router(auctions.router)
 app.include_router(comments.router)
 app.include_router(watchlist.router)
 app.include_router(notifications.router)

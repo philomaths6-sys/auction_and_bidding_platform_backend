@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { User, Shield, CheckCircle2, Bell, Upload, AlertTriangle, Key } from 'lucide-react';
 import axiosClient from '../services/api/axiosClient';
+import { formatApiError } from '../utils/apiError';
 
 export default function Settings() {
   const { user, refreshUser } = useAuth();
@@ -61,7 +62,7 @@ export default function Settings() {
       }
       addToast('Profile updated successfully', 'success');
     } catch (e) {
-      addToast(e.response?.data?.detail || 'Failed to update profile', 'error');
+      addToast(formatApiError(e, 'Failed to update profile'), 'error');
     } finally {
       setIsSavingProfile(false);
     }
@@ -80,7 +81,7 @@ export default function Settings() {
       addToast('Password updated successfully', 'success');
       setPasswords({ current: '', new: '', confirm: '' });
     } catch (e) {
-      addToast(e.response?.data?.detail || 'Failed to update password', 'error');
+      addToast(formatApiError(e, 'Failed to update password'), 'error');
     }
   };
 
@@ -92,7 +93,7 @@ export default function Settings() {
   ];
 
   return (
-    <div className="max-w-[1200px] mx-auto py-8 font-sans">
+    <div className="py-8 font-sans px-4 lg:px-6">
       <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight uppercase mb-8">Account Settings</h1>
       
       <div className="flex flex-col md:flex-row gap-8">

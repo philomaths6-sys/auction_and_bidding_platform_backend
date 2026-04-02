@@ -1,16 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
 import { useWs } from '../context/WsContext';
 import { notificationService } from '../services/api/notificationService';
-import { Gavel, User, LogOut, PlusCircle, Bell, Moon, Sun, Loader2, X, ChevronDown, CheckCircle2, AlertTriangle, Trophy, Wallet, Shield } from 'lucide-react';
+import { Gavel, User, LogOut, PlusCircle, Bell, Loader2, X, ChevronDown, CheckCircle2, AlertTriangle, Trophy, Wallet, Shield } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useCategories } from '../context/CategoryContext';
+import useNavScroll from '../hooks/useNavScroll';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
-  const { isDark, toggleTheme } = useTheme();
   const { isConnected } = useWs();
   const navigate = useNavigate();
   
@@ -20,6 +19,9 @@ export default function Navbar() {
   
   const { categories } = useCategories();
   const [showMegaMenu, setShowMegaMenu] = useState(false);
+  
+  // Nav scroll effect
+  const isScrolled = useNavScroll();
 
   useEffect(() => {
     if (user) {
@@ -64,12 +66,12 @@ export default function Navbar() {
 
   return (
     <>
-      <nav className="glass sticky top-0 z-40 transition-colors duration-200 font-sans">
+      <nav className={`sticky top-0 z-40 transition-all duration-300 font-sans ${isScrolled ? 'nav-scrolled' : 'nav-default'}`}>
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           
           {/* Logo & Mega Menu Trigger */}
           <div className="flex items-center gap-8">
-            <Link to="/" className="flex items-center gap-2 text-slate-900 dark:text-white font-black text-2xl tracking-tight uppercase hover:text-amber-500 dark:hover:text-amber-500 transition-colors">
+            <Link to="/" className="flex items-center gap-2 text-white font-black text-2xl tracking-tight uppercase hover:text-amber-500 transition-colors">
               <Gavel className="w-7 h-7 text-amber-500 mb-1" />
               PrimeAuctions
             </Link>
@@ -79,29 +81,29 @@ export default function Navbar() {
               onMouseEnter={() => setShowMegaMenu(true)}
               onMouseLeave={() => setShowMegaMenu(false)}
             >
-              <button className="flex items-center gap-1 font-bold text-slate-600 dark:text-slate-300 hover:text-amber-500 dark:hover:text-amber-500 transition-colors h-16">
+              <button className="flex items-center gap-1 font-bold text-slate-300 hover:text-amber-500 transition-colors h-16">
                 Browse <ChevronDown className="w-4 h-4 ml-1" />
               </button>
               
               {/* Mega Menu Dropdown */}
               {showMegaMenu && (
-                <div className="absolute top-16 left-0 w-[600px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl rounded-b-xl p-8 grid grid-cols-2 gap-6 z-50 animate-in slide-in-from-top-2">
+                <div className="absolute top-16 left-0 w-[600px] bg-slate-900 border border-slate-800 shadow-2xl rounded-b-xl p-8 grid grid-cols-2 gap-6 z-50 animate-in slide-in-from-top-2">
                   <div>
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Vehicles</h3>
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Categories</h3>
                     <ul className="space-y-3">
                       {categories.map(c => (
                         <li key={c.id}>
-                          <Link to={`/?category_id=${c.id}`} className="font-bold text-slate-700 dark:text-slate-200 hover:text-amber-500 dark:hover:text-amber-500 transition-colors">
+                          <Link to={`/auctions?category=${encodeURIComponent(c.name)}`} className="font-bold text-slate-200 hover:text-amber-500 transition-colors">
                             {c.name}
                           </Link>
                         </li>
                       ))}
                     </ul>
                   </div>
-                  <div className="bg-slate-50 dark:bg-slate-950 p-6 rounded-lg border border-slate-100 dark:border-slate-800">
-                    <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight mb-2">Editor's Choice</h3>
-                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-4">Discover the most pristine, verified classics hitting the block perfectly curated this week.</p>
-                    <Link to="/" className="text-amber-600 dark:text-amber-500 font-bold hover:underline">View Curated List →</Link>
+                  <div className="bg-slate-950 p-6 rounded-lg border border-slate-800">
+                    <h3 className="text-xl font-black text-white uppercase tracking-tight mb-2">Editor's Choice</h3>
+                    <p className="text-sm font-medium text-slate-400 mb-4">Discover featured listings and live auctions on the home page.</p>
+                    <Link to="/auctions" className="text-amber-500 font-bold hover:underline">Browse all →</Link>
                   </div>
                 </div>
               )}
@@ -113,26 +115,19 @@ export default function Navbar() {
               {isConnected ? (
                 <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span></span>
               ) : (
-                <Loader2 className="w-4 h-4 text-slate-300 dark:text-slate-600 animate-spin" />
+                <Loader2 className="w-4 h-4 text-slate-600 animate-spin" />
               )}
             </div>
 
-            <button 
-              onClick={toggleTheme} 
-              className="text-slate-500 hover:text-amber-500 dark:text-slate-400 dark:hover:text-amber-400 transition-colors"
-            >
-              {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
-
             {user ? (
               <>
-                <Link to="/create" className="text-slate-600 dark:text-slate-300 hover:text-amber-500 dark:hover:text-amber-400 flex items-center gap-1 font-bold transition-colors uppercase tracking-wide text-sm">
+                <Link to="/create" className="text-slate-900 hover:text-slate-900 flex items-center gap-1 font-bold transition-all duration-300 uppercase tracking-wide text-sm px-4 py-2 rounded-full" style={{ background: 'linear-gradient(135deg, #c8a020, #e8c040)', letterSpacing: '0.8px' }}>
                   <PlusCircle className="w-4 h-4" /> <span className="hidden sm:inline">Sell</span>
                 </Link>
 
                 <button 
                   onClick={() => setIsNotifOpen(true)}
-                  className="text-slate-600 dark:text-slate-300 hover:text-amber-500 dark:hover:text-amber-400 flex items-center transition-colors relative"
+                  className="text-slate-300 hover:text-amber-400 flex items-center transition-colors relative"
                 >
                   <Bell className="w-5 h-5" />
                   {unreadCount > 0 && (
@@ -142,13 +137,13 @@ export default function Navbar() {
                   )}
                 </button>
 
-                <Link to="/dashboard" className="text-slate-600 dark:text-slate-300 hover:text-amber-500 dark:hover:text-amber-400 flex items-center gap-1 font-bold transition-colors uppercase tracking-wide text-sm ml-2">
+                <Link to="/dashboard" className="text-slate-300 hover:text-amber-400 flex items-center gap-1 font-bold transition-colors uppercase tracking-wide text-sm ml-2">
                   <User className="w-5 h-5" /> <span className="hidden sm:inline">Account</span>
                 </Link>
                 
                 <button
                   onClick={() => navigate('/settings')}
-                  className="text-slate-600 dark:text-slate-300 hover:text-amber-500 dark:hover:text-amber-400 font-bold transition-colors uppercase tracking-wide text-sm"
+                  className="text-slate-300 hover:text-amber-400 font-bold transition-colors uppercase tracking-wide text-sm"
                 >
                   Settings
                 </button>
@@ -161,7 +156,7 @@ export default function Navbar() {
 
                 <button 
                   onClick={() => { logout(); navigate('/'); }}
-                  className="text-slate-600 dark:text-slate-300 hover:text-red-500 dark:hover:text-red-400 flex items-center gap-1 font-bold transition-colors uppercase tracking-wide text-sm ml-4"
+                  className="text-slate-300 hover:text-red-400 flex items-center gap-1 font-bold transition-colors uppercase tracking-wide text-sm ml-4"
                   title="Logout"
                 >
                   <LogOut className="w-5 h-5" />
@@ -169,7 +164,7 @@ export default function Navbar() {
               </>
             ) : (
               <>
-                <Link to="/login" className="text-slate-600 dark:text-slate-300 hover:text-amber-500 dark:hover:text-amber-400 font-bold transition-colors uppercase tracking-wide text-sm">Login</Link>
+                <Link to="/login" className="text-slate-300 hover:text-amber-400 font-bold transition-colors uppercase tracking-wide text-sm">Login</Link>
                 <Link to="/register" className="bg-amber-500 hover:bg-amber-400 text-slate-900 px-5 py-2 rounded-lg text-sm font-black uppercase tracking-widest transition-colors shadow-lg shadow-amber-500/20">
                   Register
                 </Link>

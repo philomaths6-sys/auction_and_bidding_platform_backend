@@ -12,12 +12,12 @@ class Comment(Base):
     auction_id        = Column(Integer, ForeignKey('auctions.id', ondelete='CASCADE'))
     user_id           = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
     comment_text      = Column(Text, nullable=False)
-    parent_comment_id = Column(Integer, ForeignKey('comments.id'), nullable=True)
+    parent_comment_id = Column(Integer, ForeignKey('comments.id', ondelete='CASCADE'), nullable=True)
     created_at        = Column(DateTime(timezone=True), server_default=func.now())
 
-    replies = relationship('Comment', back_populates='parent')
+    replies = relationship('Comment', back_populates='parent', lazy='noload')
     parent  = relationship('Comment', back_populates='replies',
-                           remote_side='Comment.id')
+                           remote_side='Comment.id', lazy='noload')
 
 class Watchlist(Base):
     __tablename__ = 'watchlists'
