@@ -48,7 +48,7 @@ export const API_CONTRACTS = {
     list: { method: 'GET', path: '/auctions/{auction_id}/bids' },
     history: { method: 'GET', path: '/auctions/{auction_id}/bid-history' },
     my: { method: 'GET', path: '/auctions/my-bids' },
-    ws: { method: 'WS', path: '/auctions/ws/{auction_id}' },
+    ws: { method: 'WS', path: '/bids/ws/{auction_id}' },
   },
 
   comments: {

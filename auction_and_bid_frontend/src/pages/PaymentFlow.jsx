@@ -215,15 +215,11 @@ export default function PaymentFlow() {
                 <span className="text-slate-500">Winning Bid</span>
                 <span className="font-mono text-slate-900 dark:text-white">${auction.current_price?.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between font-medium">
-                <span className="text-slate-500">Buyer's Premium (5%)</span>
-                <span className="font-mono text-slate-900 dark:text-white">${(auction.current_price * 0.05).toLocaleString()}</span>
-              </div>
             </div>
 
             <div className="flex justify-between items-center bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
               <span className="font-black uppercase tracking-widest text-slate-500 text-sm">Total Due</span>
-              <span className="font-mono font-black text-2xl text-amber-500">${(auction.current_price * 1.05).toLocaleString()}</span>
+              <span className="font-mono font-black text-2xl text-amber-500">${auction.current_price?.toLocaleString()}</span>
             </div>
           </div>
         </div>

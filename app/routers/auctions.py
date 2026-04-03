@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
+from datetime import timezone
 
 from app.database import get_db
 from app.models.auction import Auction, AuctionImage, AuctionAttribute, Category
@@ -34,7 +35,18 @@ async def _load_auction_for_response(db: AsyncSession, auction_id: int) -> Aucti
         )
         .where(Auction.id == auction_id)
     )
-    return r.scalar_one_or_none()
+    auction = r.scalar_one_or_none()
+    
+    if auction:
+        # Convert naive datetimes to UTC-aware for proper serialization
+        if auction.start_time and auction.start_time.tzinfo is None:
+            auction.start_time = auction.start_time.replace(tzinfo=timezone.utc)
+        if auction.end_time and auction.end_time.tzinfo is None:
+            auction.end_time = auction.end_time.replace(tzinfo=timezone.utc)
+        if auction.created_at and auction.created_at.tzinfo is None:
+            auction.created_at = auction.created_at.replace(tzinfo=timezone.utc)
+    
+    return auction
 
 
 @router.post('/', response_model=AuctionResponse, status_code=201)
@@ -94,6 +106,7 @@ async def list_auctions(
     auctions = result.scalars().all()
     
     # Handle deleted categories by setting category_name to None
+    # and convert naive datetimes to UTC-aware for proper serialization
     for auction in auctions:
         if auction.category and not auction.category.is_active:
             auction.category_name = None
@@ -101,6 +114,14 @@ async def list_auctions(
             auction.category_name = auction.category.name
         else:
             auction.category_name = None
+            
+        # Convert naive datetimes to UTC-aware for proper serialization
+        if auction.start_time and auction.start_time.tzinfo is None:
+            auction.start_time = auction.start_time.replace(tzinfo=timezone.utc)
+        if auction.end_time and auction.end_time.tzinfo is None:
+            auction.end_time = auction.end_time.replace(tzinfo=timezone.utc)
+        if auction.created_at and auction.created_at.tzinfo is None:
+            auction.created_at = auction.created_at.replace(tzinfo=timezone.utc)
     
     return auctions
 

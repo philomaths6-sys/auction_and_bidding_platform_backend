@@ -102,12 +102,16 @@ export default function Dashboard() {
   // Stats
   const activeCount = myAuctions.filter(a => a.auction_status === 'active').length;
   const totalBids = myAuctions.reduce((acc, a) => acc + (a.total_bids || 0), 0);
-  const totalRevenue = myAuctions.filter(a => a.auction_status === 'ended').reduce((acc, a) => acc + (a.current_price || 0), 0);
 
   // Payment data for seller
   const sellerPayments = payments.filter(p => p.seller_id === user?.id);
   const buyerPayments = payments.filter(p => p.buyer_id === user?.id);
   const unpaidBuyerPayments = buyerPayments.filter((p) => p.payment_status !== 'completed' && p.payment_status !== 'paid');
+
+  // Calculate revenue from completed payments, not just auction prices
+  const totalRevenue = sellerPayments
+    .filter(p => p.payment_status === 'completed' || p.payment_status === 'paid')
+    .reduce((acc, p) => acc + (parseFloat(p.amount) || 0), 0);
 
   // Ended auctions won by buyers
   const endedAuctions = myAuctions.filter(a => a.auction_status === 'ended');
@@ -396,23 +400,42 @@ export default function Dashboard() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-                        {myWins.map(b => (
-                          <tr key={`win-${b.id}`} className="hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors bg-green-50 dark:bg-green-900/20">
-                            <td className="p-4 font-bold text-slate-900 dark:text-white">
-                              <div className="flex items-center gap-2">
-                                <Trophy className="w-4 h-4 text-amber-500" />
-                                <Link to={`/auctions/${b.auction_id}`} className="hover:text-amber-500 transition-colors">
-                                  {b.auction_title || `Auction #${b.auction_id}`}
-                                </Link>
-                              </div>
-                            </td>
-                            <td className="p-4 font-mono font-black text-green-600 dark:text-green-400">${parseFloat(b.bid_amount).toLocaleString()}</td>
-                            <td className="p-4 text-sm font-medium text-slate-500">{new Date(b.bid_time).toLocaleDateString()}</td>
-                            <td className="p-4 text-right">
-                              <Link to={`/auctions/${b.auction_id}`} className="text-xs font-bold text-green-600 dark:text-green-400 uppercase tracking-widest hover:underline">View Auction</Link>
-                            </td>
-                          </tr>
-                        ))}
+                        {myWins.map(b => {
+                          // Check if this win has been paid
+                          const payment = payments.find(p => p.auction_id === b.auction_id);
+                          const isPaid = payment && (payment.payment_status === 'completed' || payment.payment_status === 'paid');
+                          
+                          return (
+                            <tr key={`win-${b.id}`} className="hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors bg-green-50 dark:bg-green-900/20">
+                              <td className="p-4 font-bold text-slate-900 dark:text-white">
+                                <div className="flex items-center gap-2">
+                                  <Trophy className="w-4 h-4 text-amber-500" />
+                                  <Link to={`/auctions/${b.auction_id}`} className="hover:text-amber-500 transition-colors">
+                                    {b.auction_title || `Auction #${b.auction_id}`}
+                                  </Link>
+                                </div>
+                              </td>
+                              <td className="p-4 font-mono font-black text-green-600 dark:text-green-400">${parseFloat(b.bid_amount).toLocaleString()}</td>
+                              <td className="p-4 text-sm font-medium text-slate-500">{new Date(b.bid_time).toLocaleDateString()}</td>
+                              <td className="p-4 text-right">
+                                {isPaid ? (
+                                  <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-xs font-bold uppercase tracking-widest rounded-full">
+                                    <CheckCircle className="w-3 h-3" />
+                                    Already Paid
+                                  </span>
+                                ) : (
+                                  <Link 
+                                    to={`/payment/${b.auction_id}`}
+                                    className="inline-flex items-center gap-1 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-900 text-xs font-bold uppercase tracking-widest rounded-full transition-colors no-underline hover:no-underline focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+                                  >
+                                    <DollarSign className="w-3 h-3" />
+                                    Pay Now
+                                  </Link>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   ) : (

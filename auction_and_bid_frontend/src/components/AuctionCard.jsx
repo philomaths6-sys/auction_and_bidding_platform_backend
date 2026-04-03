@@ -2,13 +2,37 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Eye, Heart } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
 import { watchlistService } from '../services/api/watchlistService';
 
 function safeEndDate(endTime) {
   if (endTime == null || endTime === '') return null;
   const d = new Date(endTime);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatTimeRemaining(endTime) {
+  if (!endTime) return '—';
+  
+  const now = new Date();
+  const end = new Date(endTime);
+  const diffMs = end - now;
+  
+  if (diffMs <= 0) return 'Time Up';
+  
+  const days = Math.floor(diffMs / (24 * 3600000));
+  const h = Math.floor(diffMs / 3600000);
+  const m = Math.floor(diffMs / 60000);
+  const s = Math.floor(diffMs / 1000);
+  
+  if (days > 0) {
+    return `${days}d`;
+  } else if (h > 0) {
+    return `${h}h`;
+  } else if (m > 0) {
+    return `${m}m`;
+  } else {
+    return `${s}s`;
+  }
 }
 
 export default function AuctionCard({ auction, initialWatchlisted = false, variant = 'default' }) {
@@ -327,7 +351,7 @@ export default function AuctionCard({ auction, initialWatchlisted = false, varia
                   {!isEnded && <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span></span>}
                   {!isEnded
                     ? endDate
-                      ? formatDistanceToNow(endDate)
+                      ? formatTimeRemaining(auction.end_time)
                       : '—'
                     : 'Ended'}
                 </div>
@@ -360,7 +384,7 @@ export default function AuctionCard({ auction, initialWatchlisted = false, varia
                     {!isEnded && <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span></span>}
                     {!isEnded
                       ? endDate
-                        ? formatDistanceToNow(endDate)
+                        ? formatTimeRemaining(auction.end_time)
                         : '—'
                       : 'Ended'}
                   </div>

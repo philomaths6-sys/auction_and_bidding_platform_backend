@@ -6,8 +6,9 @@ import { auctionService } from '../services/api/auctionService';
 import { bidService } from '../services/api/bidService';
 import { commentService } from '../services/api/commentService';
 import { watchlistService } from '../services/api/watchlistService';
+import { paymentService } from '../services/api/paymentService';
 import axiosClient from '../services/api/axiosClient';
-import { Heart, Flag, ChevronRight, Eye, Users, Trophy, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { Heart, Flag, ChevronRight, Eye, Users, Trophy, ChevronDown, ChevronUp, Loader2, DollarSign, CheckCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { formatApiError } from '../utils/apiError';
 import { useAuctionBidSocket } from '../hooks/useAuctionBidSocket';
@@ -23,6 +24,7 @@ export default function AuctionDetail() {
   const [auction, setAuction] = useState(null);
   const [bids, setBids] = useState([]);
   const [comments, setComments] = useState([]);
+  const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   
   const [bidAmount, setBidAmount] = useState('');
@@ -85,30 +87,45 @@ export default function AuctionDetail() {
     const interval = setInterval(updateTimer, 1000);
     updateTimer();
     return () => clearInterval(interval);
-  }, [auction]);
+  }, [auction?.id]); // Only depend on auction ID, not the whole auction object
 
-  const updateTimer = () => {
+  const updateTimer = useCallback(() => {
     if (!auction) return;
-    const now = new Date();
-    const end = new Date(auction.end_time);
-    const diffMs = end - now;
     
-    if (diffMs <= 0 || auction.auction_status === 'ended') {
+    // Only use backend status - no frontend time calculations
+    if (auction.auction_status === 'ended') {
       setTimeLeft({ diff: 0, text: 'Ended', warningLevel: 0 });
       return;
     }
     
-    const h = Math.floor(diffMs / 3600000);
-    const m = Math.floor((diffMs % 3600000) / 60000);
-    const s = Math.floor((diffMs % 60000) / 1000);
+    if (auction.auction_status === 'cancelled') {
+      setTimeLeft({ diff: 0, text: 'Cancelled', warningLevel: 0 });
+      return;
+    }
+    
+    // For active auctions, show countdown but don't change status based on time
+    const now = new Date();
+    const end = new Date(auction.end_time);
+    const diffMs = end - now;
+    
+    // Always show the time difference, even if negative (for debugging)
+    const h = Math.floor(Math.abs(diffMs) / 3600000);
+    const m = Math.floor((Math.abs(diffMs) % 3600000) / 60000);
+    const s = Math.floor((Math.abs(diffMs) % 60000) / 1000);
     
     let text = '';
-    if (h > 0) {
-      text = `${h}h ${m}m ${s}s`;
-    } else if (m > 0) {
-      text = `${m}m ${s}s`;
+    if (diffMs > 0) {
+      // Future time - show countdown
+      if (h > 0) {
+        text = `${h}h ${m}m ${s}s`;
+      } else if (m > 0) {
+        text = `${m}m ${s}s`;
+      } else {
+        text = `${s}s`;
+      }
     } else {
-      text = `${s}s`;
+      // Past time - show "0s" but don't change status
+      text = '0s';
     }
     
     let warningLevel = 0;
@@ -116,18 +133,20 @@ export default function AuctionDetail() {
     if (h === 0 && m === 0 && s < 60) warningLevel = 2;
     
     setTimeLeft({ diff: diffMs, text, warningLevel });
-  };
+  }, [auction]);
 
   const fetchData = async () => {
     try {
-      const [auctionData, bidsData, commentsData] = await Promise.all([
+      const [auctionData, bidsData, commentsData, paymentsData] = await Promise.all([
         auctionService.getAuction(id),
         bidService.getBidsForAuction(id),
-        commentService.getComments(id)
+        commentService.getComments(id),
+        user ? paymentService.getPayments().catch(() => []) : Promise.resolve([])
       ]);
       setAuction(auctionData);
       setBids(bidsData);
       setComments(commentsData);
+      setPayments(paymentsData);
       
       const primaryIdx = auctionData.images?.findIndex(img => img.is_primary);
       setPrimaryImageIdx(primaryIdx >= 0 ? primaryIdx : 0);
@@ -381,13 +400,37 @@ export default function AuctionDetail() {
       
       {/* Winner Banner */}
       {isWinner && (
-        <div className="w-full bg-green-600 text-white p-4 flex items-center justify-between shadow-lg mb-6">
-          <div className="flex items-center gap-3">
-            <Trophy className="w-6 h-6" />
-            <span className="font-bold text-lg">You won this auction for ${auction.current_price.toLocaleString()} — complete your payment</span>
-          </div>
-          <button className="bg-white text-green-700 hover:bg-green-50 px-6 py-2 rounded font-black tracking-widest uppercase text-sm transition-colors shadow">Pay now</button>
-        </div>
+        (() => {
+          const payment = payments.find(p => p.auction_id === auction.id);
+          const isPaid = payment && (payment.payment_status === 'completed' || payment.payment_status === 'paid');
+          
+          return (
+            <div className="w-full bg-green-600 text-white p-4 flex items-center justify-between shadow-lg mb-6">
+              <div className="flex items-center gap-3">
+                <Trophy className="w-6 h-6" />
+                <span className="font-bold text-lg">
+                  {isPaid 
+                    ? `You won this auction for $${auction.current_price.toLocaleString()} — payment completed`
+                    : `You won this auction for $${auction.current_price.toLocaleString()} — complete your payment`
+                  }
+                </span>
+              </div>
+              {isPaid ? (
+                <div className="flex items-center gap-2 bg-white/20 px-4 py-2 rounded font-black tracking-widest uppercase text-sm">
+                  <CheckCircle className="w-4 h-4" />
+                  Already Paid
+                </div>
+              ) : (
+                <Link 
+                  to={`/payment/${auction.id}`}
+                  className="bg-white text-green-700 hover:bg-green-50 px-6 py-2 rounded font-black tracking-widest uppercase text-sm transition-colors shadow no-underline hover:no-underline"
+                >
+                  Pay Now
+                </Link>
+              )}
+            </div>
+          );
+        })()
       )}
 
       <div className="flex flex-col lg:flex-row gap-12">
